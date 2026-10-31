@@ -5,3 +5,9 @@ PYTHONPATH=~/sage-extra sage -python scripts/find_generators.py --degrees 3 --ma
 
 # to run tests:
 sage -python -m unittest discover tests -v
+
+# to check/verify the data:
+sage -python scripts/check_data.py
+
+# to check/verify data using lmfdb:
+PYTHONPATH=~/sage-extra sage -python scripts/check_data.py --source db
