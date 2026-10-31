@@ -21,10 +21,11 @@ text|smallint|numeric[]
 2.0.4.1|1|[1,0,1]
 ```
 
-* `monogenic` is 1 if $\mathcal{O}_K$ is monogenic and 0 if it provably is not.
-  A field only appears in a file once this is decided.
+* `monogenic` is 1 if $\mathcal{O}_K$ is monogenic, -1 if it provably is not, and 0 if this has not
+  been computed. A field only appears in a file once this is decided, so fields missing from a
+  file have `monogenic = 0`.
 * `zk_coeffs` are the coefficients (constant term first, as in `nf_fields.coeffs`) of the minimal
-  polynomial of a generator $\alpha$, or `\N` (null) when `monogenic` is 0.
+  polynomial of a generator $\alpha$, or `\N` (null) when `monogenic` is not 1.
 
 Since $\alpha$ is only determined up to $\alpha \mapsto \pm\alpha + k$ and a choice of class,
 the stored $\alpha$ is:

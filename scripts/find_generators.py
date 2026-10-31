@@ -194,7 +194,7 @@ def main():
             progress(i + 1, total, ", %d monogenic" % found[1])
         flush()
         print("degree %d: %d fields checked, %d monogenic, %d not monogenic, %d undecided"
-              % (n, checked, found[1], found[0], checked - found[1] - found[0])
+              % (n, checked, found[1], found[-1], checked - found[1] - found[-1])
               + ("; %d added, %d replaced, %d kept" % (merged["added"], merged["replaced"], merged["kept"])
                  if not args.print else "")
               + ", in " + fmt_time(time.time() - t0), file=sys.stderr if args.print else sys.stdout)

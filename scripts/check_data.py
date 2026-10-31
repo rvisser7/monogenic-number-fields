@@ -3,7 +3,7 @@
 For each row with monogenic = 1 this checks that zk_coeffs is a monic irreducible
 polynomial of degree n whose discriminant equals the field discriminant read off the
 label, so its root generates the maximal order of the field it defines. Rows with
-monogenic = 0 must have a null zk_coeffs.
+monogenic = -1 (not monogenic) or 0 (not computed) must have a null zk_coeffs.
 
 With --fields (lines "label|[polredabs coeffs]") it also checks with nfisisom that
 the polynomial defines the field with that label, which the discriminant alone
@@ -32,11 +32,11 @@ def check_file(path, fields):
     for label, mono, coeffs in rows:
         if int(label.split(".")[0]) != n:
             errors.append("%s: wrong degree file" % label)
-        elif mono == 0:
+        elif mono in (-1, 0):
             if coeffs is not None:
-                errors.append("%s: monogenic = 0 but zk_coeffs given" % label)
+                errors.append("%s: monogenic = %d but zk_coeffs given" % (label, mono))
         elif mono != 1 or coeffs is None:
-            errors.append("%s: monogenic must be 0 or 1, with zk_coeffs iff 1" % label)
+            errors.append("%s: monogenic must be 1, -1 or 0, with zk_coeffs iff 1" % label)
         else:
             f = pari.Polrev(coeffs)
             if len(coeffs) != n + 1 or coeffs[-1] != 1 or not pari.polisirreducible(f):

@@ -8,7 +8,7 @@
 // IndexFormEquation applies (degree <= 4; in higher degree Magma needs a known
 // power basis already), a row is appended to outfile:
 //   label|1|[minimal polynomial of alpha, ascending]   if O_K is monogenic
-//   label|0|\N                                         if it provably is not
+//   label|-1|\N                                        if it provably is not
 // Other fields are listed on stdout for the brute-force search instead.
 //
 // The choice of alpha matches scripts/monogenic.gp: the root of the defining
@@ -68,7 +68,7 @@ function ProcessField(label, coeffs)
     end if;
     sols := IndexFormEquation(O, 1);
     if #sols eq 0 then
-        return label cat "|0|\\N";
+        return label cat "|-1|\\N";
     end if;
     best := Normalize(sols[1], n);
     bestkey := Key(best, K);
