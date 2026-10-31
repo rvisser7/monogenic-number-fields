@@ -45,6 +45,16 @@ def find_generator(coeffs, bound=3):
     return [int(c) for c in pari.Vecrev(res)]
 
 
+def generator_key(coeffs):
+    """The key by which the canonical generator is the smallest (see monogenic.gp),
+    for the generator with minimal polynomial given by ascending coeffs."""
+    return pari("mono_polkey")(pari.Polrev(coeffs))
+
+
+def is_smaller(key1, key2):
+    return pari.lex(key1, key2) < 0
+
+
 def read_data(path):
     """Rows (label, monogenic, coeffs or None) of a data file."""
     with open(path) as fh:

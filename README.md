@@ -35,9 +35,11 @@ the stored $\alpha$ is:
    smallest minimal polynomial (highest coefficient first). Within $\pm\alpha + k$ this means the
    trace lies in $[0, n/2]$.
 
-Every row with `monogenic = 1` is certified by `scripts/check_data.py`: the polynomial's discriminant
-equals the field discriminant (so its root generates the maximal order), and optionally `nfisisom`
-against the LMFDB polynomial.
+Every row is checked by `scripts/check_data.py`: for `monogenic = 1`, PARI computes the ring of
+integers of the field the polynomial defines and checks that $[\mathcal{O}_K : \mathbb{Z}[\alpha]] = 1$,
+that its discriminant matches the label, and (with `--source db`) that it is the LMFDB field. With
+`--cross-check B`, the PARI search is run as an independent check of the Magma results: it must find
+no generator for a field marked -1, and none smaller than the stored one for a field marked 1.
 
 ## Methods
 
@@ -66,7 +68,8 @@ sage -python scripts/find_generators.py --degrees 3 --max-disc 10^6  # LMFDB fie
 sage -python scripts/find_generators.py --degrees 5 --method pari -B 4
 sage -python scripts/find_generators.py --degrees 3 --input fields.txt --print   # "label|[coeffs]" lines
 python3 scripts/merge.py rows.txt [--replace]                       # merge rows from a manual Magma run
-python3 scripts/check_data.py [--fields fields.txt]                 # validate every data/degree<n>.txt
+python3 scripts/check_data.py [--fix]                               # validate every data/degree<n>.txt
+sage -python scripts/check_data.py --source db --cross-check 2      # also against the LMFDB and the PARI search
 python3 -m unittest discover tests                                  # run the tests (need cypari2)
 ```
 

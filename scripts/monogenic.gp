@@ -33,6 +33,10 @@ mono_normalize(nf, a) =
 \\ Sort key: T2 norm (rounded, to compare floats safely), then minimal polynomial.
 mono_key(nf, a) = [round(norml2(nfeltembed(nf, a)) * 10^6), Vec(minpoly(a))];
 
+\\ The same key, from the minimal polynomial g of alpha (its roots are the
+\\ embeddings of alpha).
+mono_polkey(g) = [round(norml2(polroots(g)) * 10^6), Vec(g)];
+
 \\ Try alpha = x first, then all sum_{i>=2} c_i zk[i] with max |c_i| = 1, 2,
 \\ ..., B. At the first height where generators exist, return the smallest
 \\ one by mono_key, as its minimal polynomial (t_POL).

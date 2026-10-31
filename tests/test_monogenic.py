@@ -44,6 +44,24 @@ class TestGenerators(unittest.TestCase):
         self.assertIsNone(find_generator([-8, -2, -1, 1]))
 
 
+class TestCheckData(unittest.TestCase):
+    def test_check_generator(self):
+        from check_data import check_generator
+        self.assertEqual(check_generator("3.1.244.1", 3, [6, -4, -1, 1], [-6, 1, 0, 1]), [])
+        self.assertIn("index 2", check_generator("3.1.244.1", 3, [-6, 1, 0, 1], None)[0])
+        # right discriminant, wrong field
+        self.assertIn("different field",
+                      check_generator("4.0.1040.1", 4, [10, -10, 3, -2, 1], [5, -2, -3, 0, 1])[0])
+        # the root of the LMFDB polynomial generates O_K, so it must be stored
+        self.assertIn("should be [1,0,-1,1]", check_generator("3.1.23.1", 3, [-1, -1, 0, 1], [1, 0, -1, 1])[0])
+
+    def test_cross_check(self):
+        from check_data import cross_check
+        self.assertEqual(cross_check("3.1.244.1", 1, [6, -4, -1, 1], [-6, 1, 0, 1], 2), [])
+        self.assertIn("marked not monogenic", cross_check("3.1.244.1", -1, None, [-6, 1, 0, 1], 2)[0])
+        self.assertEqual(cross_check("3.1.4.1", -1, None, [-8, -2, -1, 1], 3), [])  # Dedekind
+
+
 class TestData(unittest.TestCase):
     def test_quadratic(self):
         rows = read_data(os.path.join(DATA_DIR, "degree2.txt"))
