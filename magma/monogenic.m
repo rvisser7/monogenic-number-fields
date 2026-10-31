@@ -51,7 +51,7 @@ function Key(a, K)
 end function;
 
 function CoeffString(f)
-    return "[" cat Join([IntegerToString(ZZ!c) : c in Coefficients(f)], ", ") cat "]";
+    return "[" cat Join([IntegerToString(ZZ!c) : c in Coefficients(f)], ",") cat "]";
 end function;
 
 // Returns the row to write, or "" when IndexFormEquation does not apply.

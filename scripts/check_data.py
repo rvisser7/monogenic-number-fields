@@ -15,13 +15,17 @@ import glob
 import os
 import sys
 
-from monogenic import DATA_DIR, label_disc, label_key, pari, parse_coeffs, read_data
+from monogenic import DATA_DIR, format_data, label_disc, label_key, pari, parse_coeffs, read_data, write_data
 
 
 def check_file(path, fields):
     errors = []
     n = int(os.path.basename(path)[len("degree"):-len(".txt")])
     rows = read_data(path)
+    with open(path) as fh:
+        if fh.read() != format_data(rows):
+            errors.append("not in the standard format (sorted, no spaces in zk_coeffs); "
+                          "rewrite it with --fix")
     labels = [row[0] for row in rows]
     if labels != sorted(labels, key=label_key) or len(set(labels)) != len(labels):
         errors.append("rows are not sorted or not unique")
@@ -47,6 +51,8 @@ def check_file(path, fields):
 def main():
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--fields", help='file with lines "label|[coeffs]"')
+    parser.add_argument("--fix", action="store_true",
+                        help="first rewrite each file in the standard format")
     args = parser.parse_args()
     fields = {}
     if args.fields:
@@ -58,6 +64,8 @@ def main():
 
     ok = True
     for path in sorted(glob.glob(os.path.join(DATA_DIR, "degree*.txt")), key=lambda p: (len(p), p)):
+        if args.fix:
+            write_data(path, read_data(path))
         count, errors = check_file(path, fields)
         print("%s: %d rows, %d errors" % (os.path.basename(path), count, len(errors)))
         for e in errors:

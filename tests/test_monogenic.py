@@ -4,7 +4,7 @@ import unittest
 
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "scripts"))
 
-from monogenic import DATA_DIR, find_generator, label_disc, pari, read_data  # noqa: E402
+from monogenic import DATA_DIR, find_generator, format_coeffs, parse_coeffs, label_disc, pari, read_data  # noqa: E402
 
 # Examples from LMFDB issue 6783: monogenic, but the root of the polredabs
 # polynomial does not generate O_K.
@@ -48,6 +48,11 @@ class TestData(unittest.TestCase):
     def test_quadratic(self):
         rows = read_data(os.path.join(DATA_DIR, "degree2.txt"))
         self.assertEqual(rows[:2], [("2.0.3.1", 1, [1, -1, 1]), ("2.0.4.1", 1, [1, 0, 1])])
+
+    def test_format(self):
+        self.assertEqual(format_coeffs([1, 0, -1, 1]), "[1,0,-1,1]")
+        self.assertEqual(parse_coeffs("[1,0,-1,1]"), [1, 0, -1, 1])
+        self.assertEqual(parse_coeffs("[1, 0, -1, 1]"), [1, 0, -1, 1])
 
 
 if __name__ == "__main__":

@@ -17,8 +17,8 @@ Each file is in psycodict upload format:
 label|monogenic|zk_coeffs
 text|smallint|numeric[]
 
-2.0.3.1|1|[1, -1, 1]
-2.0.4.1|1|[1, 0, 1]
+2.0.3.1|1|[1,-1,1]
+2.0.4.1|1|[1,0,1]
 ```
 
 * `monogenic` is 1 if $\mathcal{O}_K$ is monogenic and 0 if it provably is not.

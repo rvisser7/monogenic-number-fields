@@ -20,7 +20,7 @@ def parse_coeffs(s):
 
 
 def format_coeffs(coeffs):
-    return "[" + ", ".join(str(c) for c in coeffs) + "]"
+    return "[" + ",".join(str(c) for c in coeffs) + "]"
 
 
 def label_disc(label):
@@ -60,12 +60,17 @@ def read_data(path):
     return rows
 
 
+def format_data(rows):
+    """The contents of a data file with rows (label, monogenic, coeffs or None),
+    sorted like the LMFDB."""
+    return HEADER + "".join(
+        "%s|%d|%s\n" % (label, mono, NULL if coeffs is None else format_coeffs(coeffs))
+        for label, mono, coeffs in sorted(rows, key=lambda row: label_key(row[0])))
+
+
 def write_data(path, rows):
-    """Write rows (label, monogenic, coeffs or None), sorted like the LMFDB."""
     with open(path, "w") as fh:
-        fh.write(HEADER)
-        for label, mono, coeffs in sorted(rows, key=lambda row: label_key(row[0])):
-            fh.write("%s|%d|%s\n" % (label, mono, NULL if coeffs is None else format_coeffs(coeffs)))
+        fh.write(format_data(rows))
 
 
 def data_path(n):

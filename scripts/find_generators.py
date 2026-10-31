@@ -2,7 +2,7 @@
 """Go through the LMFDB fields of the given degrees and find generators of O_K.
 
 Fields come from the LMFDB database (`from lmfdb import db`, or lmfdb-lite), or from a
-file with one `label|coeffs` line per field, e.g. `3.1.244.1|[-6, 1, 0, 1]`. Degree 1 and
+file with one `label|coeffs` line per field, e.g. `3.1.244.1|[-6,1,0,1]`. Degree 1 and
 2 fields are left out (see generate_quadratic.py).
 
 Two methods:
