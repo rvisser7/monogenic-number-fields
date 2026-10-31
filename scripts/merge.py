@@ -1,24 +1,21 @@
-"""Merge rows "label|monogenic|zk_coeffs" (from find_generators.py or
-magma/monogenic.m) into data/degree<n>.txt.
+"""Merge rows "label|monogenic|zk_coeffs" (e.g. from magma/monogenic.m run by hand)
+into data/degree<n>.txt.
 
-    python3 scripts/merge.py rows.txt [more_rows.txt ...] [--overwrite]
+    python3 scripts/merge.py rows.txt [more_rows.txt ...] [--replace]
 
-Existing rows are kept unless --overwrite is given. Rows from Magma's index form
-equation solver are exact (they consider all generators), so merge them with
---overwrite over rows from the brute-force search.
+Existing rows are kept unless --replace is given.
 """
 
 import argparse
-import os
 from collections import defaultdict
 
-from monogenic import DATA_DIR, NULL, parse_coeffs, read_data, write_data
+from monogenic import NULL, data_path, merge_data, parse_coeffs
 
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("rows", nargs="+")
-    parser.add_argument("--overwrite", action="store_true")
+    parser.add_argument("--replace", action="store_true")
     args = parser.parse_args()
 
     new = defaultdict(dict)
@@ -31,15 +28,8 @@ def main():
                     new[int(label.split(".")[0])][label] = row
 
     for n, rows in sorted(new.items()):
-        path = os.path.join(DATA_DIR, "degree%d.txt" % n)
-        old = {row[0]: row for row in read_data(path)} if os.path.exists(path) else {}
-        changed = 0
-        for label, row in rows.items():
-            if label not in old or (args.overwrite and old[label] != row):
-                old[label] = row
-                changed += 1
-        write_data(path, old.values())
-        print("degree%d.txt: %d rows added or changed, %d total" % (n, changed, len(old)))
+        added, replaced, kept = merge_data(data_path(n), rows, args.replace)
+        print("degree%d.txt: %d added, %d replaced, %d kept" % (n, added, replaced, kept))
 
 
 if __name__ == "__main__":

@@ -66,3 +66,25 @@ def write_data(path, rows):
         fh.write(HEADER)
         for label, mono, coeffs in sorted(rows, key=lambda row: label_key(row[0])):
             fh.write("%s|%d|%s\n" % (label, mono, NULL if coeffs is None else format_coeffs(coeffs)))
+
+
+def data_path(n):
+    return os.path.join(DATA_DIR, "degree%d.txt" % n)
+
+
+def merge_data(path, rows, replace=False):
+    """Merge rows {label: (label, monogenic, coeffs)} into a data file. Existing rows
+    are kept unless replace is set. Returns (added, replaced, kept)."""
+    old = {row[0]: row for row in read_data(path)} if os.path.exists(path) else {}
+    added = replaced = kept = 0
+    for label, row in rows.items():
+        if label not in old:
+            added += 1
+        elif replace and old[label] != row:
+            replaced += 1
+        else:
+            kept += 1
+            continue
+        old[label] = row
+    write_data(path, old.values())
+    return added, replaced, kept

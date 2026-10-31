@@ -60,11 +60,18 @@ against the LMFDB polynomial.
 ## Scripts
 
 ```
-python3 scripts/generate_quadratic.py --max-disc 1000      # data/degree2.txt
-python3 scripts/find_generators.py fields.txt -o rows.txt  # PARI search, fields.txt has "label|[coeffs]" lines
-sage -python scripts/find_generators.py --source db --degree 5 --max-disc 10^6 -o rows.txt
-magma -b infile:=fields.txt outfile:=rows.txt magma/monogenic.m
-python3 scripts/merge.py rows.txt [--overwrite]           # merge rows into data/
-python3 scripts/check_data.py [--fields fields.txt]       # validate every data/degree<n>.txt
-python3 -m unittest discover tests                        # run the tests (need cypari2)
+python3 scripts/generate_quadratic.py --max-disc 1000              # data/degree2.txt
+sage -python scripts/find_generators.py --degrees 3 --max-disc 10^6  # LMFDB fields, Magma for degree <= 4
+sage -python scripts/find_generators.py --degrees 5 --method pari -B 4
+sage -python scripts/find_generators.py --degrees 3 --input fields.txt --print   # "label|[coeffs]" lines
+python3 scripts/merge.py rows.txt [--replace]                       # merge rows from a manual Magma run
+python3 scripts/check_data.py [--fields fields.txt]                 # validate every data/degree<n>.txt
+python3 -m unittest discover tests                                  # run the tests (need cypari2)
 ```
+
+`find_generators.py` reads the fields from the LMFDB database (the `lmfdb` package, or
+[lmfdb-lite](https://github.com/roed314/lmfdb-lite):
+`sage -pip install -U "lmfdb-lite[pgbinary] @ git+https://github.com/roed314/lmfdb-lite.git"`)
+and merges its results into `data/` every `--batch` fields. Runs can be split with `--shard i/k`
+or discriminant ranges and run in parallel; `--only-new` skips fields that already have a row.
+Rows from Magma replace rows from the PARI search, since Magma's are exact.
