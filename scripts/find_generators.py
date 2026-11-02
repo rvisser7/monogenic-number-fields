@@ -5,12 +5,18 @@ Fields come from the LMFDB database (`from lmfdb import db`, or lmfdb-lite), or 
 file with one `label|coeffs` line per field, e.g. `3.1.244.1|[-6,1,0,1]`. Degree 1 and
 2 fields are left out (see generate_quadratic.py).
 
-Two methods:
+Methods:
   * magma (default for degree <= 4): IndexFormEquation, via magma/monogenic.m. Exact: it
     proves which fields are monogenic and finds the canonical generator, so its rows
     replace rows from the PARI search. Needs `magma` on the PATH (or --magma).
-  * pari: brute-force search over small elements (see monogenic.gp), any degree. It can
-    only show a field is monogenic, so fields where it finds nothing are not written.
+  * thue (degree 3 only): PARI solves the index form equation, a cubic Thue equation,
+    completely. Exact like magma, and gives the same rows, without needing Magma.
+  * pari: brute-force search over small elements (see monogenic.gp), any degree. When it
+    finds nothing, the tests in `local` are tried; fields where both fail are not written.
+  * local: only the tests that prove a field is NOT monogenic (common index divisors,
+    and the index form missing +-1 modulo small prime powers; see monogenic.gp). Writes
+    rows with monogenic = -1 and nothing else, e.g. for the fields the search left over:
+        --method local --only-new
 
 The rows are merged into data/degree<n>.txt every --batch fields, so an interrupted run
 keeps what it has done, and runs can be split with --shard or disc ranges and run in
@@ -24,6 +30,8 @@ Usage:
     sage -python scripts/find_generators.py --degrees 3-4 --only-new --shard 0/4   # and 1/4, ...
     sage -python scripts/find_generators.py --degrees 5 --method pari -B 4
     sage -python scripts/find_generators.py --degrees 3 --input fields.txt --print
+    sage -python scripts/find_generators.py --degrees 3 --method thue --max-disc 10^5
+    sage -python scripts/find_generators.py --degrees 5-8 --method local --only-new --show-proofs
 """
 
 import argparse
@@ -35,7 +43,8 @@ import time
 from collections import Counter
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from monogenic import NULL, data_path, find_generator, format_coeffs, merge_data, parse_coeffs, read_data
+from monogenic import (NULL, cubic_generator, data_path, find_generator, format_coeffs, merge_data,
+                       obstruction, parse_coeffs, read_data)
 from progress import Progress, fmt_time
 
 MAGMA_SCRIPT = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "magma", "monogenic.m")
@@ -129,11 +138,17 @@ def main():
     parser.add_argument("--input", help="read fields from this file instead of the LMFDB")
     parser.add_argument("--min-disc", type=parse_int, help="smallest |disc|, e.g. 10^6")
     parser.add_argument("--max-disc", type=parse_int, help="largest |disc|, e.g. 10^8")
-    parser.add_argument("--method", choices=["magma", "pari"],
+    parser.add_argument("--method", choices=["magma", "thue", "pari", "local"],
                         help="default: magma for degree <= 4, pari above")
     parser.add_argument("--magma", default="magma", help="the magma executable")
     parser.add_argument("-B", "--bound", type=int, default=3,
                         help="pari: max |coordinate| on the integral basis (default 3)")
+    parser.add_argument("--maxp", type=int, default=50,
+                        help="pari, local: try local obstructions at primes up to this (default 50)")
+    parser.add_argument("--max-points", type=parse_int, default=10**5,
+                        help="pari, local: skip a modulus needing more evaluations (default 10^5)")
+    parser.add_argument("--show-proofs", action="store_true",
+                        help="print the proof found for each field marked -1 by pari or local")
     parser.add_argument("--shard", default="0/1", help="i/k: only every k-th field, from the i-th")
     parser.add_argument("--only-new", action="store_true",
                         help="skip fields that already have a row in the data files")
@@ -152,7 +167,11 @@ def main():
 
     for n in parse_degrees(args.degrees):
         method = args.method or ("magma" if n <= 4 else "pari")
-        replace = method == "magma" or args.replace
+        if method == "thue" and n != 3:
+            sys.exit("--method thue is for degree 3 only")
+        # Exact methods overwrite rows from the search; -1 rows are proofs, so they agree
+        # with anything already there.
+        replace = method in ("magma", "thue") or args.replace
         t0 = time.time()
         total, rows = file_rows(args.input, n, args) if args.input else db_rows(n, args)
         done_before = set()
@@ -184,14 +203,24 @@ def main():
             checked += 1
             if method == "magma":
                 todo.append((label, coeffs))
+            elif method == "thue":
+                gen = cubic_generator(coeffs)
+                batch[label] = (label, 1, gen) if gen is not None else (label, -1, None)
+                found[1 if gen is not None else -1] += 1
             else:
-                gen = find_generator(coeffs, args.bound)
+                gen = find_generator(coeffs, args.bound) if method == "pari" else None
+                proof = obstruction(coeffs, args.maxp, args.max_points) if gen is None else None
                 if gen is not None:
                     batch[label] = (label, 1, gen)
                     found[1] += 1
+                elif proof is not None:
+                    batch[label] = (label, -1, None)
+                    found[-1] += 1
+                    if args.show_proofs:
+                        print("%s: not monogenic, %s" % (label, proof), file=sys.stderr, flush=True)
             if checked % args.batch == 0:
                 flush()
-            progress(i + 1, total, ", %d monogenic" % found[1])
+            progress(i + 1, total, ", %d monogenic, %d not" % (found[1], found[-1]))
         flush()
         print("degree %d: %d fields checked, %d monogenic, %d not monogenic, %d undecided"
               % (n, checked, found[1], found[-1], checked - found[1] - found[-1])

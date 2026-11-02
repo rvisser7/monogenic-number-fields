@@ -45,6 +45,27 @@ def find_generator(coeffs, bound=3):
     return [int(c) for c in pari.Vecrev(res)]
 
 
+def cubic_generator(coeffs):
+    """For a cubic field, the same as find_generator, but exact: PARI solves the index
+    form equation (a Thue equation) completely, so None means O_K is provably not
+    monogenic."""
+    res = pari("mono_cubic_generator")(pari.nfinit(pari.Polrev(coeffs)))
+    if res == 0:
+        return None
+    return [int(c) for c in pari.Vecrev(res)]
+
+
+def obstruction(coeffs, maxp=50, max_points=10**5):
+    """A proof that O_K is not monogenic, K = Q[x]/(f), or None if none was found:
+    "cid p" if p is a common index divisor, or "local m1 m2" if the index form takes
+    neither the value 1 mod m1 nor the value -1 mod m2 (see monogenic.gp). Tries primes
+    up to maxp, skipping moduli that need more than max_points evaluations."""
+    res = pari("mono_obstruction")(pari.nfinit(pari.Polrev(coeffs)), maxp, max_points)
+    if res == 0:
+        return None
+    return " ".join(str(c) for c in res)
+
+
 def generator_key(coeffs):
     """The key by which the canonical generator is the smallest (see monogenic.gp),
     for the generator with minimal polynomial given by ascending coeffs."""
