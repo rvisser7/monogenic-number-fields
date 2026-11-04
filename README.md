@@ -43,6 +43,14 @@ no generator for a field marked -1, and none smaller than the stored one for a f
 
 ## Methods
 
+* **Polredabs root** (`--method polredabs`, any degree): the quick bulk pass. The root $\alpha$ of
+  the LMFDB polynomial $f$ generates $\mathcal{O}_K$ iff $\operatorname{disc}(f) = \operatorname{disc}(K)$,
+  since $\operatorname{disc}(f) = [\mathcal{O}_K : \mathbb{Z}[\alpha]]^2 \operatorname{disc}(K)$. That costs
+  one polynomial discriminant per field (about $10^5$ fields a second), and these rows are already
+  canonical (rule 1 above), so run this first and leave the other fields to the methods below. It
+  never changes a row already in `data/`: it reports a field marked 1 with a different generator
+  (`--replace` overwrites it) and a field marked -1 as an error. With `--lmfdb-index` it reads only
+  the fields whose LMFDB `index` column is 1, which is faster still; each is still checked.
 * **Magma** ([`magma/monogenic.m`](magma/monogenic.m)): `IndexFormEquation(O, 1)` returns all
   generators up to equivalence for fields of degree at most 4, so it decides monogenicity and finds
   the canonical $\alpha$ exactly. See the
@@ -81,6 +89,7 @@ no generator for a field marked -1, and none smaller than the stored one for a f
 
 | Degree | Status |
 |---|---|
+| all | polredabs roots that generate $\mathcal{O}_K$, from `--method polredabs` |
 | 2 | done for $\lvert D \rvert \le 1000$ (`generate_quadratic.py`): every quadratic field is monogenic |
 | 3 | exact (Magma, or PARI Thue solver) |
 | 4 | exact with Magma |
@@ -90,6 +99,7 @@ no generator for a field marked -1, and none smaller than the stored one for a f
 
 ```
 python3 scripts/generate_quadratic.py --max-disc 1000              # data/degree2.txt
+sage -python scripts/find_generators.py --degrees 2-47 --method polredabs   # every field whose polredabs root generates O_K
 sage -python scripts/find_generators.py --degrees 3 --max-disc 10^6  # LMFDB fields, Magma for degree <= 4
 sage -python scripts/find_generators.py --degrees 5 --method pari -B 4
 sage -python scripts/find_generators.py --degrees 3 --input fields.txt --print   # "label|[coeffs]" lines

@@ -5,7 +5,7 @@ import unittest
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "scripts"))
 
 from monogenic import (DATA_DIR, cubic_generator, find_generator, format_coeffs, label_disc,  # noqa: E402
-                       obstruction, parse_coeffs, pari, read_data)
+                       obstruction, parse_coeffs, pari, read_data, root_generates)
 
 # Examples from LMFDB issue 6783: monogenic, but the root of the polredabs
 # polynomial does not generate O_K.
@@ -39,6 +39,13 @@ class TestGenerators(unittest.TestCase):
     def test_root_generates(self):
         # Z[2^(1/3)] is the full ring of integers, so the polynomial itself is kept.
         self.assertEqual(find_generator([-2, 0, 0, 1]), [-2, 0, 0, 1])
+
+    def test_root_generates(self):
+        self.assertTrue(root_generates([-2, 0, 0, 1], "3.1.108.1"))
+        self.assertTrue(root_generates([1, -1, 1], "2.0.3.1"))
+        for label, coeffs in ISSUE_EXAMPLES.items():
+            with self.subTest(label=label):
+                self.assertFalse(root_generates(coeffs, label))
 
     def test_dedekind_non_monogenic(self):
         # Dedekind's cubic x^3 - x^2 - 2x - 8 is not monogenic (2 splits completely).

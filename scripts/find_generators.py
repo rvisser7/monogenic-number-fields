@@ -3,9 +3,18 @@
 
 Fields come from the LMFDB database (`from lmfdb import db`, or lmfdb-lite), or from a
 file with one `label|coeffs` line per field, e.g. `3.1.244.1|[-6,1,0,1]`. Degree 1 and
-2 fields are left out (see generate_quadratic.py).
+2 fields are left out (see generate_quadratic.py), except by --method polredabs.
 
 Methods:
+  * polredabs: the quick bulk pass. Keeps exactly the fields where the root of the
+    LMFDB (polredabs) polynomial f already generates O_K, i.e. disc(f) = disc(K), and
+    writes them with zk_coeffs = f, which is the canonical generator (see README). This
+    costs one polynomial discriminant per field, so a whole degree takes about as long as
+    reading it from the LMFDB. With --lmfdb-index only the fields whose LMFDB `index`
+    column is 1 are read (faster still; each is still checked). Other fields are left
+    for the methods below. Rows already in the data files are never changed: a field
+    already marked 1 with another generator is reported (--replace overwrites it), and a
+    field marked -1 is reported as an error.
   * magma (default for degree <= 4): IndexFormEquation, via magma/monogenic.m. Exact: it
     proves which fields are monogenic and finds the canonical generator, so its rows
     replace rows from the PARI search. Needs `magma` on the PATH (or --magma).
@@ -32,6 +41,8 @@ Usage:
     sage -python scripts/find_generators.py --degrees 3 --input fields.txt --print
     sage -python scripts/find_generators.py --degrees 3 --method thue --max-disc 10^5
     sage -python scripts/find_generators.py --degrees 5-8 --method local --only-new --show-proofs
+    sage -python scripts/find_generators.py --degrees 2-47 --method polredabs
+    sage -python scripts/find_generators.py --degrees 6 --method polredabs --lmfdb-index
 """
 
 import argparse
@@ -44,7 +55,7 @@ from collections import Counter
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from monogenic import (NULL, cubic_generator, data_path, find_generator, format_coeffs, merge_data,
-                       obstruction, parse_coeffs, read_data)
+                       obstruction, parse_coeffs, read_data, root_generates)
 from progress import Progress, fmt_time
 
 MAGMA_SCRIPT = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "magma", "monogenic.m")
@@ -55,7 +66,7 @@ def parse_degrees(s):
     for part in s.split(","):
         lo, _, hi = part.partition("-")
         out += range(int(lo), int(hi or lo) + 1)
-    return sorted(set(d for d in out if d >= 3))
+    return sorted(set(d for d in out if d >= 2))
 
 
 def parse_int(s):
@@ -82,6 +93,8 @@ def db_rows(degree, args):
         disc["$lte"] = args.max_disc
     if disc:
         query["disc_abs"] = disc
+    if args.lmfdb_index:
+        query["index"] = 1
     total = db.nf_fields.count(query)
     rows = db.nf_fields.search(query, ["label", "coeffs"])
     return total, ((r["label"], [int(c) for c in r["coeffs"]]) for r in rows)
@@ -138,8 +151,10 @@ def main():
     parser.add_argument("--input", help="read fields from this file instead of the LMFDB")
     parser.add_argument("--min-disc", type=parse_int, help="smallest |disc|, e.g. 10^6")
     parser.add_argument("--max-disc", type=parse_int, help="largest |disc|, e.g. 10^8")
-    parser.add_argument("--method", choices=["magma", "thue", "pari", "local"],
+    parser.add_argument("--method", choices=["magma", "thue", "pari", "local", "polredabs"],
                         help="default: magma for degree <= 4, pari above")
+    parser.add_argument("--lmfdb-index", action="store_true",
+                        help="polredabs: only read the fields whose LMFDB index column is 1")
     parser.add_argument("--magma", default="magma", help="the magma executable")
     parser.add_argument("-B", "--bound", type=int, default=3,
                         help="pari: max |coordinate| on the integral basis (default 3)")
@@ -152,12 +167,14 @@ def main():
     parser.add_argument("--shard", default="0/1", help="i/k: only every k-th field, from the i-th")
     parser.add_argument("--only-new", action="store_true",
                         help="skip fields that already have a row in the data files")
-    parser.add_argument("--batch", type=int, default=1000,
-                        help="merge into the data files after this many fields (default 1000)")
+    parser.add_argument("--batch", type=int,
+                        help="merge into the data files after this many fields "
+                             "(default 1000, and 10^6 for polredabs)")
     parser.add_argument("--print", action="store_true",
                         help="print the rows instead of merging them")
     parser.add_argument("--replace", action="store_true",
-                        help="pari: overwrite rows already in the data files (magma always does)")
+                        help="pari, polredabs: overwrite rows already in the data files "
+                             "(magma and thue always do; polredabs never overwrites -1 rows)")
     parser.add_argument("--progress-every", type=float, default=30, metavar="SECONDS",
                         help="when not on a terminal, how often to print progress (default 30)")
     args = parser.parse_args()
@@ -165,19 +182,26 @@ def main():
     shard, nshards = (int(x) for x in args.shard.split("/"))
     progress = Progress(every=args.progress_every)
 
+    if args.lmfdb_index and args.method != "polredabs":
+        sys.exit("--lmfdb-index is for --method polredabs")
+
     for n in parse_degrees(args.degrees):
         method = args.method or ("magma" if n <= 4 else "pari")
+        if n == 2 and method != "polredabs":
+            continue  # see generate_quadratic.py
         if method == "thue" and n != 3:
             sys.exit("--method thue is for degree 3 only")
+        batch_size = args.batch or (10**6 if method == "polredabs" else 1000)
         # Exact methods overwrite rows from the search; -1 rows are proofs, so they agree
-        # with anything already there.
-        replace = method in ("magma", "thue") or args.replace
+        # with anything already there. polredabs picks the rows to write itself (below).
+        replace = method in ("magma", "thue", "polredabs") or args.replace
         t0 = time.time()
         total, rows = file_rows(args.input, n, args) if args.input else db_rows(n, args)
-        done_before = set()
-        if args.only_new and os.path.exists(data_path(n)):
-            done_before = {row[0] for row in read_data(data_path(n))}
-        found, merged = Counter(), Counter()
+        old = {}
+        if (args.only_new or method == "polredabs") and os.path.exists(data_path(n)):
+            old = {row[0]: row for row in read_data(data_path(n))}
+        done_before = old if args.only_new else {}
+        found, merged, skipped = Counter(), Counter(), Counter()
         batch, todo = {}, []
         checked = 0
         progress.start("degree %d, %s" % (n, method))
@@ -203,11 +227,32 @@ def main():
             checked += 1
             if method == "magma":
                 todo.append((label, coeffs))
+            elif method == "polredabs" and root_generates(coeffs, label):
+                found[1] += 1
+                row = (label, 1, coeffs)
+                prev = old.get(label)
+                if prev is None or prev[1] == 0:
+                    batch[label] = row
+                elif prev == row:
+                    skipped["already there"] += 1
+                elif prev[1] == -1:
+                    skipped["marked -1"] += 1
+                    print("ERROR %s: marked -1 in %s, but the root of %s generates O_K"
+                          % (label, os.path.basename(data_path(n)), format_coeffs(coeffs)),
+                          file=sys.stderr, flush=True)
+                elif args.replace:
+                    batch[label] = row
+                else:
+                    skipped["another generator"] += 1
+                    print("%s: kept %s, though the root of the polredabs polynomial %s also "
+                          "generates O_K (--replace to use it)"
+                          % (label, format_coeffs(prev[2]), format_coeffs(coeffs)),
+                          file=sys.stderr, flush=True)
             elif method == "thue":
                 gen = cubic_generator(coeffs)
                 batch[label] = (label, 1, gen) if gen is not None else (label, -1, None)
                 found[1 if gen is not None else -1] += 1
-            else:
+            elif method in ("pari", "local"):
                 gen = find_generator(coeffs, args.bound) if method == "pari" else None
                 proof = obstruction(coeffs, args.maxp, args.max_points) if gen is None else None
                 if gen is not None:
@@ -218,7 +263,7 @@ def main():
                     found[-1] += 1
                     if args.show_proofs:
                         print("%s: not monogenic, %s" % (label, proof), file=sys.stderr, flush=True)
-            if checked % args.batch == 0:
+            if checked % batch_size == 0:
                 flush()
             progress(i + 1, total, ", %d monogenic, %d not" % (found[1], found[-1]))
         flush()
@@ -226,6 +271,7 @@ def main():
               % (n, checked, found[1], found[-1], checked - found[1] - found[-1])
               + ("; %d added, %d replaced, %d kept" % (merged["added"], merged["replaced"], merged["kept"])
                  if not args.print else "")
+              + "".join("; %d %s" % (k, why) for why, k in sorted(skipped.items()))
               + ", in " + fmt_time(time.time() - t0), file=sys.stderr if args.print else sys.stdout)
 
 

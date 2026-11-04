@@ -35,6 +35,12 @@ def label_key(label):
     return (n, D, r, i)
 
 
+def root_generates(coeffs, label):
+    """Whether a root of f (ascending coeffs) generates O_K, for K = Q[x]/(f) the field
+    with this label: disc(f) = [O_K : Z[alpha]]^2 disc(K), so this is disc(f) = disc(K)."""
+    return int(pari.poldisc(pari.Polrev(coeffs))) == label_disc(label)
+
+
 def find_generator(coeffs, bound=3):
     """Ascending coefficients of the minimal polynomial of the canonical generator
     of O_K, K = Q[x]/(f) with f given by ascending coeffs, or None if the search up
