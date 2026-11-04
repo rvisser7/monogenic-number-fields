@@ -109,6 +109,7 @@ python3 scripts/merge.py rows.txt [--replace]                       # merge rows
 python3 scripts/check_data.py [--fix]                               # validate every data/degree<n>.txt
 sage -python scripts/check_data.py --source db --cross-check 2      # also against the LMFDB and the PARI search
 sage -python scripts/check_data.py --source db --reprove            # redo degree 3 with Thue, find proofs for -1 rows
+sage -python scripts/compare_lmfdb.py --write compare/              # compare with nf_fields.monogenic in the LMFDB
 python3 -m unittest discover tests                                  # run the tests (need cypari2)
 ```
 
@@ -118,3 +119,20 @@ python3 -m unittest discover tests                                  # run the te
 and merges its results into `data/` every `--batch` fields. Runs can be split with `--shard i/k`
 or discriminant ranges and run in parallel; `--only-new` skips fields that already have a row.
 Rows from Magma or the Thue solver replace rows from the PARI search, since they are exact.
+
+## Comparing with the LMFDB
+
+The LMFDB table `nf_fields` has its own `monogenic` column, with the same values (1, -1, 0, and
+also null, treated as 0). `scripts/compare_lmfdb.py` compares it with `data/` and prints, for each
+degree, how many fields each side marks 1 and -1, how many agree, and
+
+* **conflicts**: one side says 1 and the other -1. If ours is 1, the stored `zk_coeffs` (checked by
+  `check_data.py`) is a generator, so the LMFDB value is wrong; if ours is -1, one of the proofs
+  needs a second look. The script exits with status 1 if there are any;
+* fields where only we know the answer (an update for the LMFDB), and fields where only the LMFDB
+  does (still to do here).
+
+`--write DIR` writes the full lists: `conflicts.txt`, `ours_only.txt` (`label|monogenic`),
+`lmfdb_only_yes.txt` and `lmfdb_only_no.txt` (`label|[coeffs]`, ready for
+`find_generators.py --input`) and `unexpected.txt` (LMFDB values other than 1, -1, 0, null).
+`--lmfdb FILE` reads `label|monogenic` lines from a file instead of the database.
