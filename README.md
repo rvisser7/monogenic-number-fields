@@ -31,9 +31,15 @@ Since $\alpha$ is only determined up to $\alpha \mapsto \pm\alpha + k$ and a cho
 the stored $\alpha$ is:
 
 1. the root of the polredabs polynomial, if it generates $\mathcal{O}_K$ (so `zk_coeffs = coeffs`);
-2. otherwise, the generator of smallest $T_2$ norm, ties broken by the lexicographically
-   smallest minimal polynomial (highest coefficient first). Within $\pm\alpha + k$ this means the
-   trace lies in $[0, n/2]$.
+2. otherwise, the generator whose minimal polynomial $P$ comes first in the order polredabs uses:
+   smallest $T_2(P) = \sum_i |\alpha_i|^2$ (over all $n$ roots), then smallest $S(P)$ in
+   lexicographic order, where $S(P) = (|a_1|, a_1, \dots, |a_n|, a_n)$ for
+   $P = x^n + a_1x^{n-1} + \dots + a_n$. (Polredabs compares $|\operatorname{disc}(P)|$ in between,
+   but that is $|\operatorname{disc}(K)|$ for every generator of $\mathcal{O}_K$.)
+
+Rule 1 is the special case of rule 2 where the polredabs root generates $\mathcal{O}_K$, since the
+polredabs polynomial comes first in the same order among all defining polynomials of $K$; it is
+kept as a separate rule because $T_2$ is compared after rounding to 6 decimals.
 
 Every row is checked by `scripts/check_data.py`: for `monogenic = 1`, PARI computes the ring of
 integers of the field the polynomial defines and checks that $[\mathcal{O}_K : \mathbb{Z}[\alpha]] = 1$,
@@ -124,11 +130,12 @@ or discriminant ranges and run in parallel; `--only-new` skips fields that alrea
 A field keeps one generator, the first in the canonical order above. When any method (or
 `merge.py`) produces a different generator for a field that already has one, the new one replaces
 it only if it comes first in that order, i.e. it is the polredabs root, or has smaller $T_2$ norm
-(then smaller minimal polynomial), and it passes the independent check below. Each replacement is
+(then smaller $S(P)$), and it passes the independent check below. Each replacement is
 printed as `BETTER ...`. So a smaller generator from Magma or the Thue solver replaces one from the
 PARI search (which only searches up to height `-B`), but a later search never replaces a smaller one.
-`--replace` lets any checked generator replace the stored one, e.g. after changing the canonical
-order.
+`--replace` lets any checked generator replace the stored one. To bring the stored generators up to
+date after a change to the canonical order, rerun a method on just the fields whose generator is not
+the LMFDB polynomial, e.g. `find_generators.py --degrees 3 --method thue --recheck-generators`.
 
 ### Conflicts: a generator always beats -1
 

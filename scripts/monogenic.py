@@ -97,8 +97,8 @@ def is_polredabs(coeffs):
 def more_canonical(coeffs, other):
     """Whether the generator with minimal polynomial `coeffs` comes before the one with
     `other` in the canonical order (README): the root of the polredabs polynomial first,
-    then smallest T2 norm, then smallest minimal polynomial. Both must generate O_K for
-    the same field."""
+    then the polredabs order: smallest T2 norm, then smallest S(P). Both must generate
+    O_K for the same field."""
     if coeffs == other:
         return False
     p1, p2 = is_polredabs(coeffs), is_polredabs(other)
@@ -178,7 +178,7 @@ def merge_data(path, rows, replace=False, source=None, log=None):
       (default: the command line) as the origin of the new row.
     * If both rows say 1 with different generators, the new one replaces the stored one
       only if it is more canonical (more_canonical: the polredabs root, or smaller T2
-      norm, then smaller minimal polynomial) and passes verify_generator; with replace,
+      norm, then smaller S(P)) and passes verify_generator; with replace,
       whenever it passes verify_generator. Each replacement is printed ("BETTER ..."); a
       more canonical generator that fails verification is a conflict and is logged.
     * Otherwise (both -1) the existing row is kept.

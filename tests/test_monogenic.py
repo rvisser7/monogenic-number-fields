@@ -39,7 +39,17 @@ class TestGenerators(unittest.TestCase):
     def test_known_generators(self):
         # Pinned so that a change to the canonical choice is noticed.
         self.assertEqual(find_generator(ISSUE_EXAMPLES["3.1.244.1"]), [6, -4, -1, 1])
-        self.assertEqual(find_generator(ISSUE_EXAMPLES["4.0.1040.2"]), [10, -10, 3, -2, 1])
+        # [10,-10,3,-2,1] has the same T2; S(P) = (2,-2,3,3,6,6,2,2) comes first
+        self.assertEqual(find_generator(ISSUE_EXAMPLES["4.0.1040.2"]), [2, 6, 3, -2, 1])
+
+    def test_key(self):
+        key = lambda g: [int(c) for c in monogenic.generator_key(g)]
+        # T2 counts both complex roots: T2(x^2 + 1) = 2, and S(P) = (|a1|, a1, |a2|, a2)
+        self.assertEqual(key([1, 0, 1]), [2000000, 0, 0, 1, 1])
+        self.assertEqual(key([-2, 3, -1, 1]), key([-2, 3, -1, 1])[:1] + [1, -1, 3, 3, 2, -2])
+        # the polredabs order: a1 = -1 comes before a1 = 1 (S = (1,-1,...) < (1,1,...))
+        self.assertTrue(monogenic.is_smaller(monogenic.generator_key([-1, -1, 1]),
+                                             monogenic.generator_key([-1, 1, 1])))
 
     def test_root_generates(self):
         # Z[2^(1/3)] is the full ring of integers, so the polynomial itself is kept.
@@ -253,6 +263,30 @@ class TestMerge(unittest.TestCase):
         self.assertIn("1 CONFLICTS", out.getvalue())
         self.assertEqual(len(self.logged()), 1)
         self.assertIn("find_generators.py --degrees 3 --method pari --recheck-negative", self.logged()[0])
+
+
+    def test_recheck_generators(self):
+        # A stored generator that is not the canonical one is replaced; the canonical
+        # one for 3.1.244.1 is left alone.
+        import find_generators
+        write_data(self.path, [("3.1.23.1", 1, [-1, 2, -1, 1]), ("3.1.244.1", 1, self.GEN)])
+        fields = os.path.join(self.tmp.name, "fields.txt")
+        with open(fields, "w") as fh:
+            fh.write("3.1.23.1|[1,0,-1,1]\n3.1.244.1|[-6,1,0,1]\n")
+        argv = ["find_generators.py", "--degrees", "3", "--method", "thue", "--recheck-generators",
+                "--input", fields]
+        saved = sys.argv, monogenic.DATA_DIR, monogenic.CONFLICT_LOG
+        try:
+            sys.argv, monogenic.DATA_DIR, monogenic.CONFLICT_LOG = argv, self.tmp.name, self.log
+            with contextlib.redirect_stdout(io.StringIO()) as out, \
+                    contextlib.redirect_stderr(io.StringIO()) as err:
+                find_generators.main()
+        finally:
+            sys.argv, monogenic.DATA_DIR, monogenic.CONFLICT_LOG = saved
+        self.assertEqual(read_data(self.path), [("3.1.23.1", 1, [1, 0, -1, 1]), ("3.1.244.1", 1, self.GEN)])
+        self.assertIn("BETTER 3.1.23.1", err.getvalue())
+        self.assertIn("2 fields checked", out.getvalue())
+        self.assertEqual(self.logged(), [])
 
 
 class TestData(unittest.TestCase):

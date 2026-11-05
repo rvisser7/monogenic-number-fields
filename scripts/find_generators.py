@@ -34,6 +34,8 @@ anywhere else) can be a bug; if not, the -1 row wins. Each conflict is printed a
 "CONFLICT ..." and appended to conflicts.txt. To look again for generators of the fields
 marked -1, e.g. the ones Magma decided:
     --method pari --recheck-negative -B 4
+and --recheck-generators reruns a method on the fields whose stored generator is not the
+LMFDB polynomial, e.g. after a change to the canonical order.
 
 Generators: whatever the method, a new generator replaces a different stored one only if
 it comes first in the canonical order (the polredabs root, then smallest T2 norm, then
@@ -58,6 +60,7 @@ Usage:
     sage -python scripts/find_generators.py --degrees 2-47 --method polredabs
     sage -python scripts/find_generators.py --degrees 6 --method polredabs --lmfdb-index
     sage -python scripts/find_generators.py --degrees 3-4 --method pari --recheck-negative -B 4
+    sage -python scripts/find_generators.py --degrees 3 --method thue --recheck-generators
 """
 
 import argparse
@@ -185,6 +188,9 @@ def main():
     parser.add_argument("--recheck-negative", action="store_true",
                         help="only the fields marked -1 in the data files, e.g. to search "
                              "for generators of the fields Magma says are not monogenic")
+    parser.add_argument("--recheck-generators", action="store_true",
+                        help="only the fields marked 1 whose generator is not the LMFDB "
+                             "polynomial, to replace it by a smaller one if there is one")
     parser.add_argument("--batch", type=int,
                         help="merge into the data files after this many fields "
                              "(default 1000, and 10^6 for polredabs)")
@@ -203,8 +209,9 @@ def main():
 
     if args.lmfdb_index and args.method != "polredabs":
         sys.exit("--lmfdb-index is for --method polredabs")
-    if args.recheck_negative and args.only_new:
-        sys.exit("--recheck-negative and --only-new exclude each other")
+    recheck = args.recheck_negative or args.recheck_generators
+    if recheck and args.only_new:
+        sys.exit("--recheck-negative and --recheck-generators exclude --only-new")
 
     for n in parse_degrees(args.degrees):
         method = args.method or ("magma" if n <= 4 else "pari")
@@ -219,10 +226,9 @@ def main():
         t0 = time.time()
         total, rows = file_rows(args.input, n, args) if args.input else db_rows(n, args)
         old = {}
-        if (args.only_new or args.recheck_negative or method == "polredabs") and os.path.exists(data_path(n)):
+        if (args.only_new or recheck or method == "polredabs") and os.path.exists(data_path(n)):
             old = {row[0]: row for row in read_data(data_path(n))}
         done_before = old if args.only_new else {}
-        negative = {label for label, row in old.items() if row[1] == -1} if args.recheck_negative else None
         found, merged, skipped = Counter(), Counter(), Counter()
         batch, todo = {}, []
         checked = 0
@@ -246,8 +252,11 @@ def main():
         for i, (label, coeffs) in enumerate(rows):
             if i % nshards != shard or label in done_before:
                 continue
-            if negative is not None and label not in negative:
-                continue
+            if recheck:
+                prev = old.get(label)
+                if not (prev and (args.recheck_negative and prev[1] == -1 or
+                                  args.recheck_generators and prev[1] == 1 and prev[2] != coeffs)):
+                    continue
             checked += 1
             if method == "magma":
                 todo.append((label, coeffs))

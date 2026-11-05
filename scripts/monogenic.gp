@@ -5,8 +5,10 @@
 \\
 \\ Canonical choice (shared with magma/monogenic.m): if the root of the
 \\ defining polynomial generates O_K, alpha is that root. Otherwise alpha is
-\\ the generator of smallest T2 norm, ties broken by the lexicographically
-\\ smallest minimal polynomial, after normalising alpha as in mono_normalize.
+\\ the generator whose minimal polynomial P comes first in the polredabs order:
+\\ smallest T2(P), then (|disc P| is disc(K) for every generator) smallest
+\\ S(P) = (|a1|, a1, ..., |an|, an) for P = x^n + a1 x^(n-1) + ... + an. The
+\\ polredabs root, when it generates O_K, is first in this order anyway.
 
 \\ Index [O_K : Z[alpha]] for alpha given by its coordinates v on nf.zk.
 mono_index(nf, v) =
@@ -17,25 +19,29 @@ mono_index(nf, v) =
   abs(matdet(M));
 }
 
-\\ Replace alpha by the "smallest" of the elements +-alpha + k (all of which
-\\ generate the same order): smallest trace, which ends up in [0, n/2], then
-\\ smallest minimal polynomial in lexicographic order. This also minimises T2
-\\ over the class, since T2(a + k) = T2(a) + 2k Tr(a) + n k^2.
+\\ S(P) = [|a1|, a1, ..., |an|, an] for P = x^n + a1 x^(n-1) + ... + an, the
+\\ last tie-break of polredabs.
+mono_S(P) = my(v = Vec(P)); concat(vector(#v - 1, i, [abs(v[i + 1]), v[i + 1]]));
+
+\\ Sort key, from the minimal polynomial g of alpha: T2(g) = sum |root|^2 over all
+\\ n roots (rounded, to compare floats safely), then S(g).
+mono_polkey(g) = concat([round(norml2(polroots(g)) * 10^6)], mono_S(g));
+
+\\ The same key for alpha in nf. (Not from nfeltembed, which gives one embedding
+\\ per pair of complex ones, so would count those once instead of twice.)
+mono_key(nf, a) = mono_polkey(minpoly(a));
+
+\\ Replace alpha by the smallest, by mono_key, of the elements +-alpha + k (all
+\\ of which generate the same order). Since T2(a + k) = T2(a) + 2k Tr(a) + n k^2,
+\\ T2 is smallest for k next to -Tr(a)/n, so there are four candidates.
 mono_normalize(nf, a) =
 {
-  my(n = poldegree(nf.pol), t, b);
-  a -= floor(trace(a) / n);
-  t = trace(a);
-  b = if (t, 1 - a, -a);
-  if (lex([trace(b), Vec(minpoly(b))], [t, Vec(minpoly(a))]) < 0, b, a);
+  my(k = floor(trace(a) / poldegree(nf.pol)), best = 0, bestkey, key);
+  foreach ([a - k, a - k - 1, -a + k, -a + k + 1], b,
+    key = mono_key(nf, b);
+    if (!best || lex(key, bestkey) < 0, best = b; bestkey = key));
+  best;
 }
-
-\\ Sort key: T2 norm (rounded, to compare floats safely), then minimal polynomial.
-mono_key(nf, a) = [round(norml2(nfeltembed(nf, a)) * 10^6), Vec(minpoly(a))];
-
-\\ The same key, from the minimal polynomial g of alpha (its roots are the
-\\ embeddings of alpha).
-mono_polkey(g) = [round(norml2(polroots(g)) * 10^6), Vec(g)];
 
 \\ Try alpha = x first, then all sum_{i>=2} c_i zk[i] with max |c_i| = 1, 2,
 \\ ..., B. At the first height where generators exist, return the smallest
