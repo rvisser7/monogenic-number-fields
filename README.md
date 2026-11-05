@@ -48,8 +48,8 @@ no generator for a field marked -1, and none smaller than the stored one for a f
   since $\operatorname{disc}(f) = [\mathcal{O}_K : \mathbb{Z}[\alpha]]^2 \operatorname{disc}(K)$. That costs
   one polynomial discriminant per field (about $10^5$ fields a second), and these rows are already
   canonical (rule 1 above), so run this first and leave the other fields to the methods below. It
-  never changes a row already in `data/`: it reports a field marked 1 with a different generator
-  (`--replace` overwrites it) and a field marked -1 as an error. With `--lmfdb-index` it reads only
+  keeps a field already marked 1 with a different generator and reports it (`--replace`
+  overwrites it); a field marked -1 is a conflict (see below). With `--lmfdb-index` it reads only
   the fields whose LMFDB `index` column is 1, which is faster still; each is still checked.
 * **Magma** ([`magma/monogenic.m`](magma/monogenic.m)): `IndexFormEquation(O, 1)` returns all
   generators up to equivalence for fields of degree at most 4, so it decides monogenicity and finds
@@ -119,6 +119,25 @@ python3 -m unittest discover tests                                  # run the te
 and merges its results into `data/` every `--batch` fields. Runs can be split with `--shard i/k`
 or discriminant ranges and run in parallel; `--only-new` skips fields that already have a row.
 Rows from Magma or the Thue solver replace rows from the PARI search, since they are exact.
+
+### Conflicts: a generator always beats -1
+
+Magma's `IndexFormEquation` (or any of the methods here) could have a bug and wrongly say a field
+is not monogenic, but a generator is a certificate that anyone can check. So whenever a new row
+says 1 and the stored row says -1, or the other way round, the merge (`find_generators.py` with
+any method, and `merge.py`) checks the generator independently, with or without `--replace`: PARI
+computes the ring of integers of the field it defines (`nfdisc`, factoring the discriminant
+completely) and checks that $[\mathcal{O}_K : \mathbb{Z}[\alpha]] = 1$ and that the discriminant
+matches the label. If it passes, the 1 row is written or kept; otherwise the -1 row is. Either way
+the conflict is printed as `CONFLICT ...` and appended to `conflicts.txt`, with the time, both rows
+and the command that produced the new one, so it can be reported (e.g. to Magma) or looked at
+again. To search again for generators of every field marked -1:
+
+```
+sage -python scripts/find_generators.py --degrees 3-4 --method pari --recheck-negative -B 4
+```
+
+`check_data.py --cross-check B` does the same search but only reports, without changing `data/`.
 
 ## Comparing with the LMFDB
 

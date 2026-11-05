@@ -1,7 +1,8 @@
 """Shared helpers: PARI interface and the data file format."""
 
 import os
-import re
+import sys
+import time
 
 import cypari2
 
@@ -10,6 +11,9 @@ pari.allocatemem(2 * 10**8, silent=True)
 pari('read("%s")' % os.path.join(os.path.dirname(os.path.abspath(__file__)), "monogenic.gp"))
 
 DATA_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "data")
+# merge_data appends a line here for every field where a new row says 1 and the stored
+# row says -1, or the other way round (see merge_data).
+CONFLICT_LOG = os.path.join(os.path.dirname(DATA_DIR), "conflicts.txt")
 HEADER = "label|monogenic|zk_coeffs\ntext|smallint|numeric[]\n\n"
 NULL = r"\N"
 
@@ -114,19 +118,83 @@ def data_path(n):
     return os.path.join(DATA_DIR, "degree%d.txt" % n)
 
 
-def merge_data(path, rows, replace=False):
-    """Merge rows {label: (label, monogenic, coeffs)} into a data file. Existing rows
-    are kept unless replace is set. Returns (added, replaced, kept)."""
+def verify_generator(coeffs, label):
+    """Whether the root alpha of f (ascending coeffs) provably generates O_K, for K the
+    field with this label: f is monic and irreducible of degree n, and PARI's ring of
+    integers of L = Q(alpha) (nfdisc, which factors disc(f) completely) has discriminant
+    disc(f) = disc(K), i.e. [O_L : Z[alpha]] = 1 and disc(L) = disc(K). This is
+    independent of whatever produced f, so a row that passes it is a certificate."""
+    n = int(label.split(".")[0])
+    if coeffs is None or len(coeffs) != n + 1 or coeffs[-1] != 1:
+        return False
+    f = pari.Polrev(coeffs)
+    if not pari.polisirreducible(f):
+        return False
+    D = label_disc(label)
+    return pari.poldisc(f) == D and pari.nfdisc(f) == D
+
+
+def log_conflict(message, log=None):
+    """Print a conflict to stderr and append it, with the time, to the conflict log
+    (default CONFLICT_LOG)."""
+    print("CONFLICT " + message, file=sys.stderr, flush=True)
+    log = log or CONFLICT_LOG
+    if log:
+        with open(log, "a") as fh:
+            fh.write("%s %s\n" % (time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()), message))
+
+
+def merge_data(path, rows, replace=False, source=None, log=None):
+    """Merge rows {label: (label, monogenic, coeffs)} into a data file.
+
+    * A field without a row, or with monogenic = 0, gets the new row; a new row with
+      monogenic = 0 never replaces a decided one.
+    * If one row says 1 and the other -1 (a conflict: one of the methods has a bug, e.g.
+      Magma's IndexFormEquation missing a solution), the generator is checked with
+      verify_generator, whatever `replace` says. If it generates O_K, the 1 row is
+      written (or kept), since that is a certificate; otherwise the -1 row is. Either
+      way the conflict is printed and logged to `log` (default CONFLICT_LOG, conflicts.txt), with `source`
+      (default: the command line) as the origin of the new row.
+    * Otherwise (both 1, or both -1) the existing row is kept unless replace is set.
+
+    Returns (added, replaced, kept, conflicts)."""
     old = {row[0]: row for row in read_data(path)} if os.path.exists(path) else {}
-    added = replaced = kept = 0
+    if source is None:
+        source = " ".join([os.path.basename(sys.argv[0])] + sys.argv[1:])
+    name = os.path.basename(path)
+    added = replaced = kept = conflicts = 0
     for label, row in rows.items():
-        if label not in old:
+        prev = old.get(label)
+        if prev is None:
             added += 1
-        elif replace and old[label] != row:
+        elif prev == row or row[1] == 0:
+            kept += 1
+            continue
+        elif prev[1] == 0:
+            replaced += 1
+        elif prev[1] != row[1]:
+            conflicts += 1
+            yes, no = (row, prev) if row[1] == 1 else (prev, row)
+            ok = verify_generator(yes[2], label)
+            log_conflict("%s: %s has %s, the new row (from %s) has %s; the generator %s, so stored %d"
+                         % (label, name, format_row_value(prev), source, format_row_value(row),
+                            "is verified ([O_K : Z[alpha]] = 1)" if ok else "FAILED verification",
+                            1 if ok else -1), log)
+            winner = yes if ok else no
+            if winner is prev:
+                kept += 1
+                continue
+            replaced += 1
+        elif replace:
             replaced += 1
         else:
             kept += 1
             continue
         old[label] = row
     write_data(path, old.values())
-    return added, replaced, kept
+    return added, replaced, kept, conflicts
+
+
+def format_row_value(row):
+    """'1 [coeffs]', '-1' or '0', for messages."""
+    return "%d %s" % (row[1], format_coeffs(row[2])) if row[1] == 1 and row[2] is not None else str(row[1])

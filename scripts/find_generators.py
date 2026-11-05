@@ -12,12 +12,12 @@ Methods:
     costs one polynomial discriminant per field, so a whole degree takes about as long as
     reading it from the LMFDB. With --lmfdb-index only the fields whose LMFDB `index`
     column is 1 are read (faster still; each is still checked). Other fields are left
-    for the methods below. Rows already in the data files are never changed: a field
-    already marked 1 with another generator is reported (--replace overwrites it), and a
-    field marked -1 is reported as an error.
+    for the methods below. A field already marked 1 with another generator is reported
+    and kept (--replace overwrites it); a field marked -1 is a conflict (see below).
   * magma (default for degree <= 4): IndexFormEquation, via magma/monogenic.m. Exact: it
     proves which fields are monogenic and finds the canonical generator, so its rows
-    replace rows from the PARI search. Needs `magma` on the PATH (or --magma).
+    replace rows from the PARI search, except that a -1 never replaces a verified
+    generator (see below). Needs `magma` on the PATH (or --magma).
   * thue (degree 3 only): PARI solves the index form equation, a cubic Thue equation,
     completely. Exact like magma, and gives the same rows, without needing Magma.
   * pari: brute-force search over small elements (see monogenic.gp), any degree. When it
@@ -26,6 +26,15 @@ Methods:
     and the index form missing +-1 modulo small prime powers; see monogenic.gp). Writes
     rows with monogenic = -1 and nothing else, e.g. for the fields the search left over:
         --method local --only-new
+
+Conflicts: when a new row says 1 and the stored row -1, or the other way round, the
+generator is checked independently (PARI computes the ring of integers of the field it
+defines and checks [O_K : Z[alpha]] = 1 and the discriminant), whatever --replace says.
+If it passes, the 1 row wins, since a generator is a certificate and a -1 from Magma (or
+anywhere else) can be a bug; if not, the -1 row wins. Each conflict is printed as
+"CONFLICT ..." and appended to conflicts.txt. To look again for generators of the fields
+marked -1, e.g. the ones Magma decided:
+    --method pari --recheck-negative -B 4
 
 The rows are merged into data/degree<n>.txt every --batch fields, so an interrupted run
 keeps what it has done, and runs can be split with --shard or disc ranges and run in
@@ -43,6 +52,7 @@ Usage:
     sage -python scripts/find_generators.py --degrees 5-8 --method local --only-new --show-proofs
     sage -python scripts/find_generators.py --degrees 2-47 --method polredabs
     sage -python scripts/find_generators.py --degrees 6 --method polredabs --lmfdb-index
+    sage -python scripts/find_generators.py --degrees 3-4 --method pari --recheck-negative -B 4
 """
 
 import argparse
@@ -167,6 +177,9 @@ def main():
     parser.add_argument("--shard", default="0/1", help="i/k: only every k-th field, from the i-th")
     parser.add_argument("--only-new", action="store_true",
                         help="skip fields that already have a row in the data files")
+    parser.add_argument("--recheck-negative", action="store_true",
+                        help="only the fields marked -1 in the data files, e.g. to search "
+                             "for generators of the fields Magma says are not monogenic")
     parser.add_argument("--batch", type=int,
                         help="merge into the data files after this many fields "
                              "(default 1000, and 10^6 for polredabs)")
@@ -174,7 +187,8 @@ def main():
                         help="print the rows instead of merging them")
     parser.add_argument("--replace", action="store_true",
                         help="pari, polredabs: overwrite rows already in the data files "
-                             "(magma and thue always do; polredabs never overwrites -1 rows)")
+                             "(magma and thue always do). A 1 against a -1 is decided by "
+                             "checking the generator instead, with or without this")
     parser.add_argument("--progress-every", type=float, default=30, metavar="SECONDS",
                         help="when not on a terminal, how often to print progress (default 30)")
     args = parser.parse_args()
@@ -184,6 +198,8 @@ def main():
 
     if args.lmfdb_index and args.method != "polredabs":
         sys.exit("--lmfdb-index is for --method polredabs")
+    if args.recheck_negative and args.only_new:
+        sys.exit("--recheck-negative and --only-new exclude each other")
 
     for n in parse_degrees(args.degrees):
         method = args.method or ("magma" if n <= 4 else "pari")
@@ -192,15 +208,17 @@ def main():
         if method == "thue" and n != 3:
             sys.exit("--method thue is for degree 3 only")
         batch_size = args.batch or (10**6 if method == "polredabs" else 1000)
-        # Exact methods overwrite rows from the search; -1 rows are proofs, so they agree
-        # with anything already there. polredabs picks the rows to write itself (below).
+        # Exact methods overwrite rows from the search. A 1 against a -1 is a conflict,
+        # which merge_data decides by verifying the generator, whatever replace says.
+        # polredabs picks the rows to write itself (below).
         replace = method in ("magma", "thue", "polredabs") or args.replace
         t0 = time.time()
         total, rows = file_rows(args.input, n, args) if args.input else db_rows(n, args)
         old = {}
-        if (args.only_new or method == "polredabs") and os.path.exists(data_path(n)):
+        if (args.only_new or args.recheck_negative or method == "polredabs") and os.path.exists(data_path(n)):
             old = {row[0]: row for row in read_data(data_path(n))}
         done_before = old if args.only_new else {}
+        negative = {label for label, row in old.items() if row[1] == -1} if args.recheck_negative else None
         found, merged, skipped = Counter(), Counter(), Counter()
         batch, todo = {}, []
         checked = 0
@@ -217,12 +235,14 @@ def main():
                     print("%s|%d|%s" % (row[0], row[1], NULL if row[2] is None else format_coeffs(row[2])),
                           flush=True)
             if batch and not args.print:
-                merged.update(dict(zip(["added", "replaced", "kept"],
+                merged.update(dict(zip(["added", "replaced", "kept", "conflicts"],
                                        merge_data(data_path(n), batch, replace))))
             batch.clear()
 
         for i, (label, coeffs) in enumerate(rows):
             if i % nshards != shard or label in done_before:
+                continue
+            if negative is not None and label not in negative:
                 continue
             checked += 1
             if method == "magma":
@@ -231,15 +251,10 @@ def main():
                 found[1] += 1
                 row = (label, 1, coeffs)
                 prev = old.get(label)
-                if prev is None or prev[1] == 0:
-                    batch[label] = row
+                if prev is None or prev[1] in (0, -1):
+                    batch[label] = row  # a -1 is a conflict, settled and logged by merge_data
                 elif prev == row:
                     skipped["already there"] += 1
-                elif prev[1] == -1:
-                    skipped["marked -1"] += 1
-                    print("ERROR %s: marked -1 in %s, but the root of %s generates O_K"
-                          % (label, os.path.basename(data_path(n)), format_coeffs(coeffs)),
-                          file=sys.stderr, flush=True)
                 elif args.replace:
                     batch[label] = row
                 else:
@@ -270,6 +285,8 @@ def main():
         print("degree %d: %d fields checked, %d monogenic, %d not monogenic, %d undecided"
               % (n, checked, found[1], found[-1], checked - found[1] - found[-1])
               + ("; %d added, %d replaced, %d kept" % (merged["added"], merged["replaced"], merged["kept"])
+                 + ("; %d CONFLICTS with the stored rows (see conflicts.txt)" % merged["conflicts"]
+                    if merged["conflicts"] else "")
                  if not args.print else "")
               + "".join("; %d %s" % (k, why) for why, k in sorted(skipped.items()))
               + ", in " + fmt_time(time.time() - t0), file=sys.stderr if args.print else sys.stdout)
