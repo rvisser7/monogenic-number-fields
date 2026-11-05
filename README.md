@@ -47,9 +47,9 @@ no generator for a field marked -1, and none smaller than the stored one for a f
   the LMFDB polynomial $f$ generates $\mathcal{O}_K$ iff $\operatorname{disc}(f) = \operatorname{disc}(K)$,
   since $\operatorname{disc}(f) = [\mathcal{O}_K : \mathbb{Z}[\alpha]]^2 \operatorname{disc}(K)$. That costs
   one polynomial discriminant per field (about $10^5$ fields a second), and these rows are already
-  canonical (rule 1 above), so run this first and leave the other fields to the methods below. It
-  keeps a field already marked 1 with a different generator and reports it (`--replace`
-  overwrites it); a field marked -1 is a conflict (see below). With `--lmfdb-index` it reads only
+  canonical (rule 1 above), so run this first and leave the other fields to the methods below. By
+  rule 1 these replace any other stored generator, and a field marked -1 is a conflict (see
+  below). With `--lmfdb-index` it reads only
   the fields whose LMFDB `index` column is 1, which is faster still; each is still checked.
 * **Magma** ([`magma/monogenic.m`](magma/monogenic.m)): `IndexFormEquation(O, 1)` returns all
   generators up to equivalence for fields of degree at most 4, so it decides monogenicity and finds
@@ -118,7 +118,17 @@ python3 -m unittest discover tests                                  # run the te
 `sage -pip install -U "lmfdb-lite[pgbinary] @ git+https://github.com/roed314/lmfdb-lite.git"`)
 and merges its results into `data/` every `--batch` fields. Runs can be split with `--shard i/k`
 or discriminant ranges and run in parallel; `--only-new` skips fields that already have a row.
-Rows from Magma or the Thue solver replace rows from the PARI search, since they are exact.
+
+### Which generator is kept
+
+A field keeps one generator, the first in the canonical order above. When any method (or
+`merge.py`) produces a different generator for a field that already has one, the new one replaces
+it only if it comes first in that order, i.e. it is the polredabs root, or has smaller $T_2$ norm
+(then smaller minimal polynomial), and it passes the independent check below. Each replacement is
+printed as `BETTER ...`. So a smaller generator from Magma or the Thue solver replaces one from the
+PARI search (which only searches up to height `-B`), but a later search never replaces a smaller one.
+`--replace` lets any checked generator replace the stored one, e.g. after changing the canonical
+order.
 
 ### Conflicts: a generator always beats -1
 

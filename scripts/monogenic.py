@@ -86,6 +86,27 @@ def is_smaller(key1, key2):
     return pari.lex(key1, key2) < 0
 
 
+def is_polredabs(coeffs):
+    """Whether f (ascending coeffs) is its own polredabs polynomial. For a generator of
+    O_K this says that it is the root of the LMFDB polynomial, which is rule 1 of the
+    canonical choice (see README)."""
+    f = pari.Polrev(coeffs)
+    return pari.polredabs(f) == f
+
+
+def more_canonical(coeffs, other):
+    """Whether the generator with minimal polynomial `coeffs` comes before the one with
+    `other` in the canonical order (README): the root of the polredabs polynomial first,
+    then smallest T2 norm, then smallest minimal polynomial. Both must generate O_K for
+    the same field."""
+    if coeffs == other:
+        return False
+    p1, p2 = is_polredabs(coeffs), is_polredabs(other)
+    if p1 != p2:
+        return p1
+    return is_smaller(generator_key(coeffs), generator_key(other))
+
+
 def read_data(path):
     """Rows (label, monogenic, coeffs or None) of a data file."""
     with open(path) as fh:
@@ -155,7 +176,12 @@ def merge_data(path, rows, replace=False, source=None, log=None):
       written (or kept), since that is a certificate; otherwise the -1 row is. Either
       way the conflict is printed and logged to `log` (default CONFLICT_LOG, conflicts.txt), with `source`
       (default: the command line) as the origin of the new row.
-    * Otherwise (both 1, or both -1) the existing row is kept unless replace is set.
+    * If both rows say 1 with different generators, the new one replaces the stored one
+      only if it is more canonical (more_canonical: the polredabs root, or smaller T2
+      norm, then smaller minimal polynomial) and passes verify_generator; with replace,
+      whenever it passes verify_generator. Each replacement is printed ("BETTER ..."); a
+      more canonical generator that fails verification is a conflict and is logged.
+    * Otherwise (both -1) the existing row is kept.
 
     Returns (added, replaced, kept, conflicts)."""
     old = {row[0]: row for row in read_data(path)} if os.path.exists(path) else {}
@@ -185,7 +211,21 @@ def merge_data(path, rows, replace=False, source=None, log=None):
                 kept += 1
                 continue
             replaced += 1
-        elif replace:
+        elif row[1] == 1:
+            better = more_canonical(row[2], prev[2])
+            if not (better or replace):
+                kept += 1
+                continue
+            if not verify_generator(row[2], label):
+                conflicts += 1
+                log_conflict("%s: %s has %s, the new row (from %s) has %s, which comes first in the "
+                             "canonical order but FAILED verification, so kept the stored one"
+                             % (label, name, format_row_value(prev), source, format_row_value(row)), log)
+                kept += 1
+                continue
+            print("%s %s: replaced %s by %s (from %s)"
+                  % ("BETTER" if better else "REPLACED", label, format_coeffs(prev[2]),
+                     format_coeffs(row[2]), source), file=sys.stderr, flush=True)
             replaced += 1
         else:
             kept += 1

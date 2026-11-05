@@ -3,9 +3,11 @@ into data/degree<n>.txt.
 
     python3 scripts/merge.py rows.txt [more_rows.txt ...] [--replace]
 
-Existing rows are kept unless --replace is given, except that when one row says 1 and
-the other -1, the generator is verified and wins if it passes ([O_K : Z[alpha]] = 1),
-and the conflict is printed and logged to conflicts.txt (see monogenic.merge_data).
+Rows are merged as by find_generators.py (see monogenic.merge_data): when one row says 1
+and the other -1, the generator is verified and wins if it passes ([O_K : Z[alpha]] = 1),
+and the conflict is printed and logged to conflicts.txt; a new generator replaces the
+stored one if it comes first in the canonical order (or, with --replace, always) and
+passes the same check.
 """
 
 import argparse

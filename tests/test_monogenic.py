@@ -187,10 +187,46 @@ class TestMerge(unittest.TestCase):
         self.assertEqual(self.merge((0, None), (-1, None))[:2], ((-1, None), (0, 1, 0, 0)))
         self.assertEqual(self.merge((1, self.GEN), (0, None), True)[:2], ((1, self.GEN), (0, 0, 1, 0)))
         self.assertEqual(self.merge((-1, None), (-1, None))[:2], ((-1, None), (0, 0, 1, 0)))
-        other = [10, -6, 1, 1]
-        self.assertEqual(self.merge((1, self.GEN), (1, other))[:2], ((1, self.GEN), (0, 0, 1, 0)))
-        self.assertEqual(self.merge((1, self.GEN), (1, other), True)[:2], ((1, other), (0, 1, 0, 0)))
         self.assertEqual(self.logged(), [])
+
+    def merge23(self, stored, new, replace=False):
+        """Merge generator `new` for 3.1.23.1 into a file storing `stored`."""
+        write_data(self.path, [("3.1.23.1", 1, stored)])
+        with contextlib.redirect_stderr(io.StringIO()) as err:
+            counts = merge_data(self.path, {"3.1.23.1": ("3.1.23.1", 1, new)}, replace,
+                                source="test", log=self.log)
+        return read_data(self.path)[0][2], counts, err.getvalue()
+
+    def test_canonical_generator_wins(self):
+        # Generators of O_K for 3.1.23.1, in the canonical order: the polredabs root,
+        # then by T2 norm (3.22, 3.26, 3.83).
+        root, g1, g2 = [1, 0, -1, 1], [-1, -1, 0, 1], [-1, 2, -1, 1]
+        self.assertTrue(monogenic.more_canonical(root, g1))
+        self.assertTrue(monogenic.more_canonical(g1, g2))
+        self.assertFalse(monogenic.more_canonical(g2, g1))
+        # A smaller generator replaces a larger one, whichever method finds it ...
+        coeffs, counts, err = self.merge23(g2, g1)
+        self.assertEqual((coeffs, counts), (g1, (0, 1, 0, 0)))
+        self.assertIn("BETTER 3.1.23.1: replaced [-1,2,-1,1] by [-1,-1,0,1]", err)
+        # ... and the polredabs root replaces any other ...
+        self.assertEqual(self.merge23(g1, root)[:2], (root, (0, 1, 0, 0)))
+        # ... but nothing replaces a smaller one, with or without replace = True
+        # (unless the new generator also checks out).
+        self.assertEqual(self.merge23(g1, g2)[:2], (g1, (0, 0, 1, 0)))
+        self.assertEqual(self.merge23(root, g1)[:2], (root, (0, 0, 1, 0)))
+        self.assertEqual(self.merge23(root, g1, True)[:2], (g1, (0, 1, 0, 0)))
+        self.assertEqual(self.logged(), [])
+
+    def test_bad_smaller_generator_rejected(self):
+        # The polredabs root of 3.1.244.1 comes first in the canonical order, but Z[alpha]
+        # has index 2, so it must not replace the stored generator, even with replace.
+        write_data(self.path, [("3.1.244.1", 1, self.GEN)])
+        with contextlib.redirect_stderr(io.StringIO()) as err:
+            counts = merge_data(self.path, {"3.1.244.1": ("3.1.244.1", 1, self.BAD)}, True,
+                                source="test", log=self.log)
+        self.assertEqual(read_data(self.path)[0][2], self.GEN)
+        self.assertEqual(counts, (0, 0, 1, 1))
+        self.assertIn("FAILED verification, so kept the stored one", self.logged()[0])
 
     def test_recheck_negative(self):
         # A false -1 (as from a buggy Magma run) is corrected by the PARI search, and a

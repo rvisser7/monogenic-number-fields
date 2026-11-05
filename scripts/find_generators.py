@@ -12,12 +12,11 @@ Methods:
     costs one polynomial discriminant per field, so a whole degree takes about as long as
     reading it from the LMFDB. With --lmfdb-index only the fields whose LMFDB `index`
     column is 1 are read (faster still; each is still checked). Other fields are left
-    for the methods below. A field already marked 1 with another generator is reported
-    and kept (--replace overwrites it); a field marked -1 is a conflict (see below).
+    for the methods below. By rule 1 these replace any other stored generator.
   * magma (default for degree <= 4): IndexFormEquation, via magma/monogenic.m. Exact: it
-    proves which fields are monogenic and finds the canonical generator, so its rows
-    replace rows from the PARI search, except that a -1 never replaces a verified
-    generator (see below). Needs `magma` on the PATH (or --magma).
+    proves which fields are monogenic and finds the canonical generator, so its
+    generators replace larger ones from the PARI search (see below). Needs `magma` on
+    the PATH (or --magma).
   * thue (degree 3 only): PARI solves the index form equation, a cubic Thue equation,
     completely. Exact like magma, and gives the same rows, without needing Magma.
   * pari: brute-force search over small elements (see monogenic.gp), any degree. When it
@@ -35,6 +34,12 @@ anywhere else) can be a bug; if not, the -1 row wins. Each conflict is printed a
 "CONFLICT ..." and appended to conflicts.txt. To look again for generators of the fields
 marked -1, e.g. the ones Magma decided:
     --method pari --recheck-negative -B 4
+
+Generators: whatever the method, a new generator replaces a different stored one only if
+it comes first in the canonical order (the polredabs root, then smallest T2 norm, then
+smallest minimal polynomial; see README) and passes the same check. Each replacement is
+printed as "BETTER ...". --replace makes any new generator that passes the check
+replace the stored one.
 
 The rows are merged into data/degree<n>.txt every --batch fields, so an interrupted run
 keeps what it has done, and runs can be split with --shard or disc ranges and run in
@@ -186,9 +191,9 @@ def main():
     parser.add_argument("--print", action="store_true",
                         help="print the rows instead of merging them")
     parser.add_argument("--replace", action="store_true",
-                        help="pari, polredabs: overwrite rows already in the data files "
-                             "(magma and thue always do). A 1 against a -1 is decided by "
-                             "checking the generator instead, with or without this")
+                        help="let any verified new generator replace the stored one, not "
+                             "just one that comes first in the canonical order (1 against -1 "
+                             "is decided by checking the generator, with or without this)")
     parser.add_argument("--progress-every", type=float, default=30, metavar="SECONDS",
                         help="when not on a terminal, how often to print progress (default 30)")
     args = parser.parse_args()
@@ -208,10 +213,9 @@ def main():
         if method == "thue" and n != 3:
             sys.exit("--method thue is for degree 3 only")
         batch_size = args.batch or (10**6 if method == "polredabs" else 1000)
-        # Exact methods overwrite rows from the search. A 1 against a -1 is a conflict,
-        # which merge_data decides by verifying the generator, whatever replace says.
-        # polredabs picks the rows to write itself (below).
-        replace = method in ("magma", "thue", "polredabs") or args.replace
+        # merge_data settles a 1 against a -1 by verifying the generator, and two
+        # generators by the canonical order (so exact methods beat the search).
+        replace = args.replace
         t0 = time.time()
         total, rows = file_rows(args.input, n, args) if args.input else db_rows(n, args)
         old = {}
@@ -251,18 +255,11 @@ def main():
                 found[1] += 1
                 row = (label, 1, coeffs)
                 prev = old.get(label)
-                if prev is None or prev[1] in (0, -1):
-                    batch[label] = row  # a -1 is a conflict, settled and logged by merge_data
-                elif prev == row:
+                if prev == row:
                     skipped["already there"] += 1
-                elif args.replace:
-                    batch[label] = row
                 else:
-                    skipped["another generator"] += 1
-                    print("%s: kept %s, though the root of the polredabs polynomial %s also "
-                          "generates O_K (--replace to use it)"
-                          % (label, format_coeffs(prev[2]), format_coeffs(coeffs)),
-                          file=sys.stderr, flush=True)
+                    # merge_data settles a -1 (a conflict) and another generator (rule 1)
+                    batch[label] = row
             elif method == "thue":
                 gen = cubic_generator(coeffs)
                 batch[label] = (label, 1, gen) if gen is not None else (label, -1, None)
