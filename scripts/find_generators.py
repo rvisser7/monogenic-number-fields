@@ -37,6 +37,14 @@ marked -1, e.g. the ones Magma decided:
 and --recheck-generators reruns a method on the fields whose stored generator is not the
 LMFDB polynomial, e.g. after a change to the canonical order.
 
+LMFDB monogenic fields: --lmfdb-monogenic reads only the fields that the LMFDB marks
+monogenic (nf_fields.monogenic = 1) and that have no generator here yet (no row, or a
+row marked 0 or -1), e.g. to run the search on just those:
+    --degrees 6 --method pari --lmfdb-monogenic -B 4
+A field marked -1 here is a conflict with the LMFDB, settled as above if the search
+finds a generator; add --only-new to leave those out. compare_lmfdb.py lists the same
+fields (lmfdb_only_yes.txt, and the conflicts).
+
 Generators: whatever the method, a new generator replaces a different stored one only if
 it comes first in the canonical order (the polredabs root, then smallest T2 norm, then
 smallest minimal polynomial; see README) and passes the same check. Each replacement is
@@ -61,6 +69,7 @@ Usage:
     sage -python scripts/find_generators.py --degrees 6 --method polredabs --lmfdb-index
     sage -python scripts/find_generators.py --degrees 3-4 --method pari --recheck-negative -B 4
     sage -python scripts/find_generators.py --degrees 3 --method thue --recheck-generators
+    sage -python scripts/find_generators.py --degrees 6 --method pari --lmfdb-monogenic -B 4
 """
 
 import argparse
@@ -113,6 +122,8 @@ def db_rows(degree, args):
         query["disc_abs"] = disc
     if args.lmfdb_index:
         query["index"] = 1
+    if args.lmfdb_monogenic:
+        query["monogenic"] = 1
     total = db.nf_fields.count(query)
     rows = db.nf_fields.search(query, ["label", "coeffs"])
     return total, ((r["label"], [int(c) for c in r["coeffs"]]) for r in rows)
@@ -185,6 +196,9 @@ def main():
     parser.add_argument("--shard", default="0/1", help="i/k: only every k-th field, from the i-th")
     parser.add_argument("--only-new", action="store_true",
                         help="skip fields that already have a row in the data files")
+    parser.add_argument("--lmfdb-monogenic", action="store_true",
+                        help="only the fields the LMFDB marks monogenic that have no generator "
+                             "in the data files (no row, or marked 0 or -1)")
     parser.add_argument("--recheck-negative", action="store_true",
                         help="only the fields marked -1 in the data files, e.g. to search "
                              "for generators of the fields Magma says are not monogenic")
@@ -212,6 +226,11 @@ def main():
     recheck = args.recheck_negative or args.recheck_generators
     if recheck and args.only_new:
         sys.exit("--recheck-negative and --recheck-generators exclude --only-new")
+    if args.lmfdb_monogenic and args.input:
+        sys.exit("--lmfdb-monogenic reads the LMFDB; for a file, use the lists from "
+                 "compare_lmfdb.py --write (lmfdb_only_yes.txt)")
+    if args.lmfdb_monogenic and args.recheck_generators:
+        sys.exit("--lmfdb-monogenic skips the fields with a generator, so it excludes --recheck-generators")
 
     for n in parse_degrees(args.degrees):
         method = args.method or ("magma" if n <= 4 else "pari")
@@ -226,7 +245,8 @@ def main():
         t0 = time.time()
         total, rows = file_rows(args.input, n, args) if args.input else db_rows(n, args)
         old = {}
-        if (args.only_new or recheck or method == "polredabs") and os.path.exists(data_path(n)):
+        if (args.only_new or recheck or args.lmfdb_monogenic or method == "polredabs") \
+                and os.path.exists(data_path(n)):
             old = {row[0]: row for row in read_data(data_path(n))}
         done_before = old if args.only_new else {}
         found, merged, skipped = Counter(), Counter(), Counter()
@@ -257,6 +277,8 @@ def main():
                 if not (prev and (args.recheck_negative and prev[1] == -1 or
                                   args.recheck_generators and prev[1] == 1 and prev[2] != coeffs)):
                     continue
+            if args.lmfdb_monogenic and old.get(label, (label, 0))[1] == 1:
+                continue  # we already have a generator
             checked += 1
             if method == "magma":
                 todo.append((label, coeffs))

@@ -288,6 +288,61 @@ class TestMerge(unittest.TestCase):
         self.assertIn("2 fields checked", out.getvalue())
         self.assertEqual(self.logged(), [])
 
+    def test_lmfdb_monogenic(self):
+        # Only the fields the LMFDB marks 1 and that have no generator here are searched:
+        # 3.1.244.1 (a false -1 here, a conflict) and 3.1.31.1 (no row); not 3.1.23.1
+        # (already has one), 3.1.44.1 (LMFDB 0) or 3.1.503.1 (LMFDB -1).
+        import types
+        import find_generators
+
+        lmfdb = [("3.1.23.1", 1, [1, 0, -1, 1]), ("3.1.31.1", 1, [1, 1, 0, 1]), ("3.1.44.1", 0, [-1, 1, -1, 1]),
+                 ("3.1.244.1", 1, [-6, 1, 0, 1]), ("3.1.503.1", -1, [8, 2, -1, 1])]
+
+        class Table:
+            def __init__(self):
+                self.queries = []
+
+            def rows(self, query):
+                self.queries.append(query)
+                for label, mono, coeffs in lmfdb:
+                    row = {"label": label, "degree": 3, "monogenic": mono, "coeffs": coeffs}
+                    if all(row[k] == v for k, v in query.items()):
+                        yield row
+
+            def count(self, query):
+                return len(list(self.rows(query)))
+
+            def search(self, query, cols):
+                return [{c: r[c] for c in cols} for r in self.rows(query)]
+
+        def run(*extra):
+            write_data(self.path, [("3.1.23.1", 1, [1, 0, -1, 1]), ("3.1.244.1", -1, None)])
+            table = Table()
+            argv = ["find_generators.py", "--degrees", "3", "--method", "pari", "--lmfdb-monogenic"] + list(extra)
+            saved = sys.argv, monogenic.DATA_DIR, monogenic.CONFLICT_LOG
+            sys.modules["lmf"] = types.SimpleNamespace(db=types.SimpleNamespace(nf_fields=table))
+            try:
+                sys.argv, monogenic.DATA_DIR, monogenic.CONFLICT_LOG = argv, self.tmp.name, self.log
+                with contextlib.redirect_stdout(io.StringIO()) as out, \
+                        contextlib.redirect_stderr(io.StringIO()):
+                    find_generators.main()
+            finally:
+                sys.argv, monogenic.DATA_DIR, monogenic.CONFLICT_LOG = saved
+                del sys.modules["lmf"]
+            self.assertTrue(table.queries)
+            self.assertTrue(all(q.get("monogenic") == 1 for q in table.queries))
+            return out.getvalue()
+
+        out = run()
+        self.assertIn("2 fields checked", out)
+        self.assertEqual(read_data(self.path), [("3.1.23.1", 1, [1, 0, -1, 1]), ("3.1.31.1", 1, [1, 1, 0, 1]),
+                                                ("3.1.244.1", 1, self.GEN)])
+        self.assertEqual(len(self.logged()), 1)  # the conflict for 3.1.244.1
+        out = run("--only-new")
+        self.assertIn("1 fields checked", out)
+        self.assertEqual(read_data(self.path), [("3.1.23.1", 1, [1, 0, -1, 1]), ("3.1.31.1", 1, [1, 1, 0, 1]),
+                                                ("3.1.244.1", -1, None)])
+
 
 class TestData(unittest.TestCase):
     def test_quadratic(self):

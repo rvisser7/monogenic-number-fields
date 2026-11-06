@@ -111,6 +111,7 @@ sage -python scripts/find_generators.py --degrees 5 --method pari -B 4
 sage -python scripts/find_generators.py --degrees 3 --input fields.txt --print   # "label|[coeffs]" lines
 sage -python scripts/find_generators.py --degrees 3 --method thue --max-disc 10^5   # exact, no Magma
 sage -python scripts/find_generators.py --degrees 5-8 --method local --only-new  # prove the rest are not monogenic
+sage -python scripts/find_generators.py --degrees 6 --method pari --lmfdb-monogenic -B 4  # LMFDB says monogenic, no generator here yet
 python3 scripts/merge.py rows.txt [--replace]                       # merge rows from a manual Magma run
 python3 scripts/check_data.py [--fix]                               # validate every data/degree<n>.txt
 sage -python scripts/check_data.py --source db --cross-check 2      # also against the LMFDB and the PARI search
@@ -172,3 +173,14 @@ degree, how many fields each side marks 1 and -1, how many agree, and
 `lmfdb_only_yes.txt` and `lmfdb_only_no.txt` (`label|[coeffs]`, ready for
 `find_generators.py --input`) and `unexpected.txt` (LMFDB values other than 1, -1, 0, null).
 `--lmfdb FILE` reads `label|monogenic` lines from a file instead of the database.
+
+To run the search on just the fields the LMFDB says are monogenic but that have no generator
+here yet (no row, or a row marked 0 or -1), straight from the database:
+
+```
+sage -python scripts/find_generators.py --degrees 6 --method pari --lmfdb-monogenic -B 4
+```
+
+This adds `monogenic = 1` to the `nf_fields` query and skips the fields already marked 1. A field
+marked -1 here is a conflict with the LMFDB; if the search finds a generator it is verified and
+replaces the -1 as above (add `--only-new` to leave those fields out).
