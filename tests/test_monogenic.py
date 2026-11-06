@@ -8,7 +8,8 @@ import unittest
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "scripts"))
 
 import monogenic  # noqa: E402
-from monogenic import (DATA_DIR, cubic_generator, find_generator, format_coeffs, label_disc,  # noqa: E402
+from monogenic import (DATA_DIR, cubic_generator, factor_generator, find_generator, format_coeffs,  # noqa: E402
+                       label_disc,
                        merge_data, obstruction, parse_coeffs, pari, read_data, root_generates,
                        verify_generator, write_data)
 
@@ -106,6 +107,42 @@ class TestNonMonogenic(unittest.TestCase):
                     self.assertIsNone(find_generator(coeffs, 2))
 
 
+class TestFactorIndexForm(unittest.TestCase):
+    def test_examples(self):
+        # 4.0.1197.2: no common index divisor or local obstruction, but the index form is
+        # (x3^2 - x3 x4 + x4^2) * (a quartic), and that quartic is never +-1 on the six
+        # points where the first factor is 1.
+        self.assertEqual(factor_generator([9, 3, -5, -1, 1]), (True, None))
+        self.assertIsNone(obstruction([9, 3, -5, -1, 1]))
+        self.assertEqual(factor_generator([7, 5, -4, -2, 1]), (True, [7, 5, -4, -2, 1]))  # 4.0.1197.1, the root
+        # issue examples, with the generators Magma gives (stored in data/degree4.txt)
+        self.assertEqual(factor_generator(ISSUE_EXAMPLES["4.0.1040.2"]), (True, [2, 6, 3, -2, 1]))
+        self.assertEqual(factor_generator(ISSUE_EXAMPLES["4.0.1413.1"]), (True, [13, -9, -2, 0, 1]))
+
+    def test_not_applicable(self):
+        # totally real and mixed D4 fields: no definite factor
+        self.assertEqual(factor_generator([4, 2, -5, -1, 1]), (False, None))
+        self.assertEqual(factor_generator([-1, -3, 0, -1, 1]), (False, None))
+
+    def test_quartic_fields_agree(self):
+        # Totally complex quartic fields with a quadratic subfield, |D| <= 1500: the
+        # answer must agree with the proofs of non-monogenicity and the search.
+        for f in pari('concat([nflist("C4", [1, 1500], 2), nflist("V4", [1, 1500], 2), nflist("D4", [1, 1500], 2)])'):
+            coeffs = [int(c) for c in pari.Vecrev(pari.polredabs(f))]
+            decided, gen = factor_generator(coeffs)
+            with self.subTest(coeffs=coeffs):
+                if not decided:
+                    continue
+                if gen is None:
+                    self.assertIsNone(find_generator(coeffs, 2))
+                else:
+                    self.assertIsNone(obstruction(coeffs))
+                    self.assertTrue(verify_generator(gen, "4.0.%d.1" % abs(int(pari.nfdisc(f)))))
+                    found = find_generator(coeffs, 2)
+                    if found is not None:
+                        self.assertFalse(monogenic.more_canonical(found, gen))
+
+
 class TestCheckData(unittest.TestCase):
     def test_check_generator(self):
         from check_data import check_generator
@@ -130,6 +167,9 @@ class TestCheckData(unittest.TestCase):
         self.assertIn("not the stored one", reprove("3.1.244.1", 3, 1, [-6, 1, 0, 1], [-6, 1, 0, 1])[0][0])
         self.assertIn("no solutions", reprove("3.3.1957.1", 3, 1, [-8, -2, -1, 1], [-8, -2, -1, 1])[0][0])
         self.assertEqual(reprove("5.1.140625.1", 5, -1, None, [-3, 0, -5, 0, 0, 1]), ([], True))
+        self.assertEqual(reprove("4.0.1197.2", 4, -1, None, [9, 3, -5, -1, 1]), ([], True))
+        self.assertIn("no solutions", reprove("4.0.1197.2", 4, 1, [9, 3, -5, -1, 1], [9, 3, -5, -1, 1])[0][0])
+        self.assertEqual(reprove("4.0.1040.2", 4, 1, [2, 6, 3, -2, 1], [4, -4, 1, 0, 1]), ([], True))
 
 
 class TestMerge(unittest.TestCase):

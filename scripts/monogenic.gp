@@ -199,3 +199,83 @@ mono_cubic_generator(nf) =
     if (!best || lex(key, bestkey) < 0, best = al; bestkey = key));
   if (best, minpoly(best), 0);
 }
+
+\\ (4) Factoring the index form. I(x) is a polynomial over Z, so if it factors,
+\\ I(x) = +-1 forces every factor to be +-1. When some factors are semidefinite
+\\ quadratic forms, this bounds x: for a quartic field K with a quadratic subfield
+\\ k the cubic resolvent of K is reducible, and I has a factor N(x) that is (up to
+\\ sign) the norm form of k on O_K / (O_k + Z), of rank 2 (Gaal, Petho, Pohst).
+\\ If k is imaginary (K is then totally complex: every such V4 field, and the D4
+\\ fields whose quadratic subfield is imaginary, but no C4 field), N is positive
+\\ definite, so N(x) = 1 has finitely many solutions modulo the kernel, and on each
+\\ of them I = +-1 is a polynomial equation in the one remaining coordinate, which
+\\ nfroots solves exactly. This decides monogenicity and finds all generators.
+
+\\ The index form I(x2, ..., xn) on nf.zk as a polynomial in the variables X.
+mono_indexform_sym(nf, X) =
+{
+  my(n = poldegree(nf.pol), T = mono_multables(nf), A, M = matrix(n, n), v);
+  A = sum(i = 2, n, X[i - 1] * T[i]);
+  v = vectorv(n, i, i == 1);
+  for (j = 1, n, M[, j] = v; v = A * v);
+  matdet(M);
+}
+
+\\ A unimodular matrix whose last columns span the saturated lattice K (m x k).
+mono_complete_basis(K) =
+{
+  my(m = #K~, k = #K, W, inK, notK);
+  W = matsnf(K, 1)[1]^-1;
+  inK = [j | j <- [1 .. m], matrank(matconcat([K, W[, j]])) == k];
+  notK = [j | j <- [1 .. m], matrank(matconcat([K, W[, j]])) > k];
+  if (#inK != k, error("mono_complete_basis: lattice not saturated"));
+  matconcat(vector(m, i, W[, if (i <= m - k, notK[i], inK[i - m + k])]));
+}
+
+\\ Decide monogenicity by factoring the index form (see above). Returns the
+\\ canonical generator (as in mono_generator) as its minimal polynomial, 0 if O_K is
+\\ provably not monogenic, or -1 if the method does not apply (no semidefinite
+\\ quadratic factors, or they leave more than one coordinate free).
+mono_factor_generator(nf) =
+{
+  my(n = poldegree(nf.pol), X, Y, J, F, g, G, sg, S, Q = List(), r, free, U, IY, Gp, V, w, xw, p,
+     sols = List(), best = 0, bestkey, al, key);
+  if (n < 3, return(-1));
+  if (mono_index(nf, nfalgtobasis(nf, variable(nf.pol))) == 1, return(nf.pol));
+  X = vector(n - 1, i, varlower(Str("mono_x", i + 1)));
+  Y = vector(n - 1, i, varlower(Str("mono_y", i + 1)));
+  J = mono_indexform_sym(nf, X);
+  F = factor(J)[, 1];
+  S = matrix(n - 1, n - 1);
+  for (i = 1, #F,
+    g = F[i];
+    if (substvec(g, X, 'mono_t * X) != 'mono_t^2 * g, next);
+    G = simplify(matrix(n - 1, n - 1, a, b, deriv(deriv(g, X[a]), X[b]) / 2));
+    sg = qfsign(G);
+    if (sg[1] && sg[2], next);
+    listput(Q, [g, if (sg[1], 1, -1)]);
+    S += if (sg[1], G, -G));
+  if (!#Q, return(-1));
+  r = matrank(S);
+  free = n - 1 - r;
+  if (free > 1, return(-1));
+  U = if (free, mono_complete_basis(matkerint(S)), matid(n - 1));
+  Gp = (U~ * S * U)[1 .. r, 1 .. r];
+  IY = substvec(J, X, Vec(U * Y~));
+  V = qfminim(2 * Gp, 2 * #Q, , 2)[3];
+  for (k = 1, #V, foreach ([V[, k], -V[, k]], w,
+    if (w~ * Gp * w != #Q, next);
+    if (!free,
+      xw = U * w;
+      if (abs(substvec(J, X, Vec(xw))) == 1, listput(sols, xw)),
+      p = substvec(IY, Y[1 .. r], Vec(w));
+      foreach ([1, -1], e,
+        if (p == e, error("mono_factor_generator: index form constant on a line"));
+        foreach (nfroots(, subst(p - e, Y[n - 1], 'z)), t,
+          if (denominator(t) == 1, listput(sols, U * concat(w, [t]~))))))));
+  for (i = 1, #sols,
+    al = mono_normalize(nf, nfbasistoalg(nf, concat([0], sols[i])));
+    key = mono_key(nf, al);
+    if (!best || lex(key, bestkey) < 0, best = al; bestkey = key));
+  if (best, minpoly(best), 0);
+}

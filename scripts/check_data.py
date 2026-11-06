@@ -17,9 +17,11 @@ independent check of the Magma results: it must find no generator for a field ma
 and no generator smaller (see monogenic.gp) than the stored one for a field marked 1.
 
 With --reprove, PARI decides each field again where it can: cubic fields exactly by
-solving the Thue equation (the row must match, generator included), and for rows of other
-degrees marked -1 it looks for a common index divisor or local obstruction. A -1 row without
-such a proof is counted but is not an error, since Magma may have proved it some other way.
+solving the Thue equation (the row must match, generator included), quartic fields with an
+imaginary quadratic subfield exactly by factoring the index form (likewise), and for the
+other rows marked -1 it looks for a common index divisor or local obstruction. A -1 row
+without such a proof is counted but is not an error, since Magma may have proved it some
+other way.
 
     python3 scripts/check_data.py
     sage -python scripts/check_data.py --source db --degrees 3-4 --cross-check 2
@@ -33,7 +35,7 @@ import os
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from monogenic import (DATA_DIR, cubic_generator, find_generator, obstruction, format_data, generator_key, is_smaller, label_disc,
+from monogenic import (DATA_DIR, cubic_generator, factor_generator, find_generator, obstruction, format_data, generator_key, is_smaller, label_disc,
                        format_coeffs, label_key, pari, parse_coeffs, read_data, write_data)
 from progress import Progress
 
@@ -98,14 +100,19 @@ def cross_check(label, mono, coeffs, field_coeffs, bound):
 def reprove(label, n, mono, coeffs, field_coeffs):
     """(errors, proved): errors from deciding the field again with PARI, and whether a -1
     row of degree > 3 has a PARI proof."""
+    decided, how = False, None
     if n == 3:
-        gen = cubic_generator(field_coeffs)
+        decided, gen, how = True, cubic_generator(field_coeffs), "the Thue equation"
+    elif n == 4:
+        decided, gen = factor_generator(field_coeffs)
+        how = "the factored index form"
+    if decided:
         if gen is None and mono == 1:
-            return ["%s: marked monogenic, but the Thue equation has no solutions" % label], False
+            return ["%s: marked monogenic, but %s has no solutions" % (label, how)], False
         if gen is not None and mono == -1:
-            return ["%s: marked not monogenic, but the Thue equation gives %s" % (label, format_coeffs(gen))], False
+            return ["%s: marked not monogenic, but %s gives %s" % (label, how, format_coeffs(gen))], False
         if gen is not None and gen != coeffs:
-            return ["%s: the Thue equation gives the generator %s, not the stored one" % (label, format_coeffs(gen))], False
+            return ["%s: %s gives the generator %s, not the stored one" % (label, how, format_coeffs(gen))], False
         return [], True
     if mono == -1:
         return [], obstruction(field_coeffs) is not None
@@ -137,7 +144,7 @@ def check_file(path, fields, cross_bound, progress, do_reprove=False):
             errors += check_generator(label, n, coeffs, fields.get(label))
         if (cross_bound or do_reprove) and mono == -1 and label not in fields:
             skipped += 1
-        if do_reprove and label in fields and (n == 3 and mono != 0 or mono == -1):
+        if do_reprove and label in fields and (n in (3, 4) and mono != 0 or mono == -1):
             errs, proved = reprove(label, n, mono, coeffs, fields[label])
             errors += errs
             unproved += mono == -1 and not proved and not errs

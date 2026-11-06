@@ -19,6 +19,12 @@ Methods:
     the PATH (or --magma).
   * thue (degree 3 only): PARI solves the index form equation, a cubic Thue equation,
     completely. Exact like magma, and gives the same rows, without needing Magma.
+  * factor (meant for degree 4): factors the index form over Z. For a quartic field with
+    an imaginary quadratic subfield one factor is a positive definite binary quadratic
+    form, which leaves finitely many cases, each a polynomial equation in one variable
+    (see monogenic.gp). Exact like thue for those fields, both ways, without Magma; other
+    fields are skipped. E.g. for the quartic fields not decided yet:
+        --degrees 4 --method factor --only-new
   * pari: brute-force search over small elements (see monogenic.gp), any degree. When it
     finds nothing, the tests in `local` are tried; fields where both fail are not written.
   * local: only the tests that prove a field is NOT monogenic (common index divisors,
@@ -65,6 +71,7 @@ Usage:
     sage -python scripts/find_generators.py --degrees 3 --input fields.txt --print
     sage -python scripts/find_generators.py --degrees 3 --method thue --max-disc 10^5
     sage -python scripts/find_generators.py --degrees 5-8 --method local --only-new --show-proofs
+    sage -python scripts/find_generators.py --degrees 4 --method factor --only-new
     sage -python scripts/find_generators.py --degrees 2-47 --method polredabs
     sage -python scripts/find_generators.py --degrees 6 --method polredabs --lmfdb-index
     sage -python scripts/find_generators.py --degrees 3-4 --method pari --recheck-negative -B 4
@@ -81,8 +88,8 @@ import time
 from collections import Counter
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from monogenic import (NULL, cubic_generator, data_path, find_generator, format_coeffs, merge_data,
-                       obstruction, parse_coeffs, read_data, root_generates)
+from monogenic import (NULL, cubic_generator, data_path, factor_generator, find_generator, format_coeffs,
+                       merge_data, obstruction, parse_coeffs, read_data, root_generates)
 from progress import Progress, fmt_time
 
 MAGMA_SCRIPT = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "magma", "monogenic.m")
@@ -180,7 +187,7 @@ def main():
     parser.add_argument("--input", help="read fields from this file instead of the LMFDB")
     parser.add_argument("--min-disc", type=parse_int, help="smallest |disc|, e.g. 10^6")
     parser.add_argument("--max-disc", type=parse_int, help="largest |disc|, e.g. 10^8")
-    parser.add_argument("--method", choices=["magma", "thue", "pari", "local", "polredabs"],
+    parser.add_argument("--method", choices=["magma", "thue", "factor", "pari", "local", "polredabs"],
                         help="default: magma for degree <= 4, pari above")
     parser.add_argument("--lmfdb-index", action="store_true",
                         help="polredabs: only read the fields whose LMFDB index column is 1")
@@ -192,7 +199,7 @@ def main():
     parser.add_argument("--max-points", type=parse_int, default=10**5,
                         help="pari, local: skip a modulus needing more evaluations (default 10^5)")
     parser.add_argument("--show-proofs", action="store_true",
-                        help="print the proof found for each field marked -1 by pari or local")
+                        help="print the proof found for each field marked -1 by pari, local or factor")
     parser.add_argument("--shard", default="0/1", help="i/k: only every k-th field, from the i-th")
     parser.add_argument("--only-new", action="store_true",
                         help="skip fields that already have a row in the data files")
@@ -295,6 +302,13 @@ def main():
                 gen = cubic_generator(coeffs)
                 batch[label] = (label, 1, gen) if gen is not None else (label, -1, None)
                 found[1 if gen is not None else -1] += 1
+            elif method == "factor":
+                decided, gen = factor_generator(coeffs)
+                if decided:
+                    batch[label] = (label, 1, gen) if gen is not None else (label, -1, None)
+                    found[1 if gen is not None else -1] += 1
+                    if args.show_proofs and gen is None:
+                        print("%s: not monogenic, factored index form" % label, file=sys.stderr, flush=True)
             elif method in ("pari", "local"):
                 gen = find_generator(coeffs, args.bound) if method == "pari" else None
                 proof = obstruction(coeffs, args.maxp, args.max_points) if gen is None else None

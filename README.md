@@ -66,6 +66,23 @@ no generator for a field marked -1, and none smaller than the stored one for a f
   which PARI's `thue` solves completely and unconditionally. This decides monogenicity and finds
   the canonical $\alpha$ exactly, like Magma, and gives the same rows (checked on all 21,845 cubic
   fields with $\lvert D \rvert \le 10^5$).
+* **Factoring the index form** (`--method factor`, meant for degree 4): the index form $I(x)$
+  (see below) is a polynomial over $\mathbb{Z}$, so $I(x) = \pm 1$ forces each of its factors to
+  be $\pm 1$. For a quartic field $K$ with a quadratic subfield $k$ the cubic resolvent is
+  reducible and $I$ factors (Gaál, Pethő and Pohst): one factor is the norm form of $k$ on
+  $\mathcal{O}_K / (\mathcal{O}_k + \mathbb{Z})$, a binary quadratic form. When $k$ is imaginary
+  it is positive definite, so it equals 1 at only finitely many points (found with `qfminim`),
+  and at each of them $I(x) = \pm 1$ is a polynomial equation in the one remaining coordinate,
+  solved exactly with `nfroots`. This decides monogenicity and finds the canonical $\alpha$
+  exactly, like Magma, for every quartic field with an imaginary quadratic subfield (the
+  totally complex V4 fields, and the D4 fields whose quadratic subfield is imaginary); other
+  fields are skipped, unless the root of their polynomial generates. E.g. 4.0.1197.2 has no common index divisor or local obstruction, but
+  $I = (x_3^2 - x_3 x_4 + x_4^2) \cdot Q(x_2, x_3, x_4)$, and $Q = \pm 1$ has no solution on the
+  six points where the first factor is 1, so it is not monogenic. Of the 3,635 totally complex
+  C4, V4 and D4 fields with $\lvert D \rvert \le 10^5$ it decides 3,298 (2,842 not monogenic)
+  in a few minutes, and agrees with every row in `data/`, except that for 4.0.23517.2 and
+  4.0.76432.2 it finds a more canonical generator than the stored one (same $T_2$, smaller
+  $S(P)$).
 * **PARI brute force** ([`scripts/monogenic.gp`](scripts/monogenic.gp)): search
   $\alpha = \sum_{i \ge 2} c_i \omega_i$ over the LLL-reduced integral basis with
   $\max |c_i| = 1, 2, \dots, B$, computing $[\mathcal{O}_K : \mathbb{Z}[\alpha]]$ as a determinant.
@@ -98,7 +115,7 @@ no generator for a field marked -1, and none smaller than the stored one for a f
 | all | polredabs roots that generate $\mathcal{O}_K$, from `--method polredabs` |
 | 2 | done for $\lvert D \rvert \le 1000$ (`generate_quadratic.py`): every quadratic field is monogenic |
 | 3 | exact (Magma, or PARI Thue solver) |
-| 4 | exact with Magma |
+| 4 | exact with Magma; exact with PARI (`--method factor`) for fields with an imaginary quadratic subfield |
 | $\ge 5$ | PARI brute force for 1, common index divisors and local obstructions for -1 |
 
 ## Scripts
@@ -111,11 +128,12 @@ sage -python scripts/find_generators.py --degrees 5 --method pari -B 4
 sage -python scripts/find_generators.py --degrees 3 --input fields.txt --print   # "label|[coeffs]" lines
 sage -python scripts/find_generators.py --degrees 3 --method thue --max-disc 10^5   # exact, no Magma
 sage -python scripts/find_generators.py --degrees 5-8 --method local --only-new  # prove the rest are not monogenic
+sage -python scripts/find_generators.py --degrees 4 --method factor --only-new   # exact for quartics with an imaginary quadratic subfield
 sage -python scripts/find_generators.py --degrees 6 --method pari --lmfdb-monogenic -B 4  # LMFDB says monogenic, no generator here yet
 python3 scripts/merge.py rows.txt [--replace]                       # merge rows from a manual Magma run
 python3 scripts/check_data.py [--fix]                               # validate every data/degree<n>.txt
 sage -python scripts/check_data.py --source db --cross-check 2      # also against the LMFDB and the PARI search
-sage -python scripts/check_data.py --source db --reprove            # redo degree 3 with Thue, find proofs for -1 rows
+sage -python scripts/check_data.py --source db --reprove            # redo degree 3 with Thue, degree 4 by factoring, find proofs for -1 rows
 sage -python scripts/compare_lmfdb.py --write compare/              # compare with nf_fields.monogenic in the LMFDB
 python3 -m unittest discover tests                                  # run the tests (need cypari2)
 ```

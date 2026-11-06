@@ -65,6 +65,19 @@ def cubic_generator(coeffs):
     return [int(c) for c in pari.Vecrev(res)]
 
 
+def factor_generator(coeffs):
+    """Decide monogenicity by factoring the index form (mono_factor_generator in
+    monogenic.gp), for quartic fields with an imaginary quadratic subfield. Returns
+    (True, generator coeffs) if O_K is monogenic, with the canonical generator, (True,
+    None) if it is provably not, and (False, None) if the method does not apply."""
+    res = pari("mono_factor_generator")(pari.nfinit(pari.Polrev(coeffs)))
+    if res == -1:
+        return False, None
+    if res == 0:
+        return True, None
+    return True, [int(c) for c in pari.Vecrev(res)]
+
+
 def obstruction(coeffs, maxp=50, max_points=10**5):
     """A proof that O_K is not monogenic, K = Q[x]/(f), or None if none was found:
     "cid p" if p is a common index divisor, or "local m1 m2" if the index form takes
