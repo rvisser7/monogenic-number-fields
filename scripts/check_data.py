@@ -18,8 +18,9 @@ and no generator smaller (see monogenic.gp) than the stored one for a field mark
 
 With --reprove, PARI decides each field again where it can: cubic fields exactly by
 solving the Thue equation (the row must match, generator included), quartic fields with an
-imaginary quadratic subfield exactly by factoring the index form (likewise), and for the
-other rows marked -1 it looks for a common index divisor or local obstruction. A -1 row
+imaginary quadratic subfield exactly by factoring the index form (likewise; with a real
+one this can still prove a -1 row), and for the other rows marked -1 it looks for a common
+index divisor or local obstruction. A -1 row
 without such a proof is counted but is not an error, since Magma may have proved it some
 other way.
 

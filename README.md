@@ -76,13 +76,27 @@ no generator for a field marked -1, and none smaller than the stored one for a f
   solved exactly with `nfroots`. This decides monogenicity and finds the canonical $\alpha$
   exactly, like Magma, for every quartic field with an imaginary quadratic subfield (the
   totally complex V4 fields, and the D4 fields whose quadratic subfield is imaginary); other
-  fields are skipped, unless the root of their polynomial generates. E.g. 4.0.1197.2 has no common index divisor or local obstruction, but
+  fields are skipped, unless the root of their polynomial generates. E.g. 4.0.1197.2 has no
+  common index divisor or local obstruction, but
   $I = (x_3^2 - x_3 x_4 + x_4^2) \cdot Q(x_2, x_3, x_4)$, and $Q = \pm 1$ has no solution on the
-  six points where the first factor is 1, so it is not monogenic. Of the 3,635 totally complex
-  C4, V4 and D4 fields with $\lvert D \rvert \le 10^5$ it decides 3,298 (2,842 not monogenic)
-  in a few minutes, and agrees with every row in `data/`, except that for 4.0.23517.2 and
-  4.0.76432.2 it finds a more canonical generator than the stored one (same $T_2$, smaller
-  $S(P)$).
+  six points where the first factor is 1, so it is not monogenic.
+
+  When $k$ is real (any signature) it can still prove that $K$ is *not* monogenic. Write
+  $I = c \prod_l (U - t_l V)$, with $t_l$ the roots of the cubic resolvent and $U$, $V$ two
+  ternary quadratic forms with rational coefficients (Gaál, Pethő and Pohst; found numerically,
+  then the identity is checked exactly). A rational root $t$ splits this as $I = c \, L \, M$,
+  $L = U - tV$ linear and $M$ quadratic in $(U, V)$, and $I = \pm 1$ forces $L$ and $M$ to
+  take one of two values each. That is a line meeting a conic in the $(U, V)$ plane: at most two
+  points for each choice of signs, and they must be rational with the right denominators. Often
+  there are none (e.g. 4.2.1600.1: $5Q = (5x_2^2 - 2B)^2 + 16N^2$, so $\lvert I \rvert \ge 16/5$);
+  otherwise $U(x) = u$, $V(x) = v$ is tested modulo small prime powers. This never finds a
+  generator, so monogenic fields with a real $k$ are left to the search.
+
+  On all 5,039 C4, V4 and D4 fields with $\lvert D \rvert \le 10^5$ (every signature) it decides
+  4,968 (4,297 not monogenic, 1,765 of them beyond the reach of `--method local`) in about 10
+  minutes; of the 71 left, 37 are monogenic. It agrees with every row in `data/`, except that
+  for 4.0.23517.2 and 4.0.76432.2 it finds a more canonical generator than the stored one (same
+  $T_2$, smaller $S(P)$). S4 and A4 fields (irreducible resolvent) are skipped.
 * **PARI brute force** ([`scripts/monogenic.gp`](scripts/monogenic.gp)): search
   $\alpha = \sum_{i \ge 2} c_i \omega_i$ over the LLL-reduced integral basis with
   $\max |c_i| = 1, 2, \dots, B$, computing $[\mathcal{O}_K : \mathbb{Z}[\alpha]]$ as a determinant.
@@ -115,7 +129,7 @@ no generator for a field marked -1, and none smaller than the stored one for a f
 | all | polredabs roots that generate $\mathcal{O}_K$, from `--method polredabs` |
 | 2 | done for $\lvert D \rvert \le 1000$ (`generate_quadratic.py`): every quadratic field is monogenic |
 | 3 | exact (Magma, or PARI Thue solver) |
-| 4 | exact with Magma; exact with PARI (`--method factor`) for fields with an imaginary quadratic subfield |
+| 4 | exact with Magma; exact with PARI (`--method factor`) for fields with an imaginary quadratic subfield, and it proves most non-monogenic fields with a real one |
 | $\ge 5$ | PARI brute force for 1, common index divisors and local obstructions for -1 |
 
 ## Scripts
@@ -128,7 +142,7 @@ sage -python scripts/find_generators.py --degrees 5 --method pari -B 4
 sage -python scripts/find_generators.py --degrees 3 --input fields.txt --print   # "label|[coeffs]" lines
 sage -python scripts/find_generators.py --degrees 3 --method thue --max-disc 10^5   # exact, no Magma
 sage -python scripts/find_generators.py --degrees 5-8 --method local --only-new  # prove the rest are not monogenic
-sage -python scripts/find_generators.py --degrees 4 --method factor --only-new   # exact for quartics with an imaginary quadratic subfield
+sage -python scripts/find_generators.py --degrees 4 --method factor --only-new   # quartics with a quadratic subfield
 sage -python scripts/find_generators.py --degrees 6 --method pari --lmfdb-monogenic -B 4  # LMFDB says monogenic, no generator here yet
 python3 scripts/merge.py rows.txt [--replace]                       # merge rows from a manual Magma run
 python3 scripts/check_data.py [--fix]                               # validate every data/degree<n>.txt

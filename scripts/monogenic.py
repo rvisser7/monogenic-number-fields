@@ -67,9 +67,10 @@ def cubic_generator(coeffs):
 
 def factor_generator(coeffs):
     """Decide monogenicity by factoring the index form (mono_factor_generator in
-    monogenic.gp), for quartic fields with an imaginary quadratic subfield. Returns
-    (True, generator coeffs) if O_K is monogenic, with the canonical generator, (True,
-    None) if it is provably not, and (False, None) if the method does not apply."""
+    monogenic.gp): exact for quartic fields with an imaginary quadratic subfield, and
+    for other quartic fields with a quadratic subfield it can prove non-monogenicity.
+    Returns (True, generator coeffs) if O_K is monogenic, with the canonical generator,
+    (True, None) if it is provably not, and (False, None) if undecided."""
     res = pari("mono_factor_generator")(pari.nfinit(pari.Polrev(coeffs)))
     if res == -1:
         return False, None

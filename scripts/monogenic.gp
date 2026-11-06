@@ -234,8 +234,10 @@ mono_complete_basis(K) =
 
 \\ Decide monogenicity by factoring the index form (see above). Returns the
 \\ canonical generator (as in mono_generator) as its minimal polynomial, 0 if O_K is
-\\ provably not monogenic, or -1 if the method does not apply (no semidefinite
-\\ quadratic factors, or they leave more than one coordinate free).
+\\ provably not monogenic, or -1 if the method does not decide (no semidefinite
+\\ quadratic factors, or they leave more than one coordinate free). For quartic
+\\ fields it then tries mono_resolvent_test (below), which can prove more fields
+\\ not monogenic, but never finds generators.
 mono_factor_generator(nf) =
 {
   my(n = poldegree(nf.pol), X, Y, J, F, g, G, sg, S, Q = List(), r, free, U, IY, Gp, V, w, xw, p,
@@ -255,10 +257,10 @@ mono_factor_generator(nf) =
     if (sg[1] && sg[2], next);
     listput(Q, [g, if (sg[1], 1, -1)]);
     S += if (sg[1], G, -G));
-  if (!#Q, return(-1));
+  if (!#Q, return(if (n == 4, mono_resolvent_test(nf, X, J), -1)));
   r = matrank(S);
   free = n - 1 - r;
-  if (free > 1, return(-1));
+  if (free > 1, return(if (n == 4, mono_resolvent_test(nf, X, J), -1)));
   U = if (free, mono_complete_basis(matkerint(S)), matid(n - 1));
   Gp = (U~ * S * U)[1 .. r, 1 .. r];
   IY = substvec(J, X, Vec(U * Y~));
@@ -278,4 +280,102 @@ mono_factor_generator(nf) =
     key = mono_key(nf, al);
     if (!best || lex(key, bestkey) < 0, best = al; bestkey = key));
   if (best, minpoly(best), 0);
+}
+
+\\ (5) Quartic fields with a quadratic subfield, in general (also real ones). Write
+\\ alpha = sum x_i zk[i] with conjugates a1..a4, and phi_1 = a1 a2 + a3 a4,
+\\ phi_2 = a1 a3 + a2 a4, phi_3 = a1 a4 + a2 a3. Each phi_k is a quadratic form in
+\\ x = (x2, x3, x4), phi_k = A0 + A1 t_k + A2 t_k^2, where t_k are the roots of the
+\\ cubic resolvent P of nf.pol and A0, A1, A2 are forms with rational coefficients,
+\\ so phi_i - phi_j = (t_i - t_j) (U - t_l V) with U = A1 + (t_1 + t_2 + t_3) A2,
+\\ V = A2, and I(x) = c * V^3 P(U/V) = c * prod_l (U - t_l V) (Gaal, Petho and
+\\ Pohst). U and V are found numerically, then the identity is checked exactly, so
+\\ nothing below depends on the numerics.
+\\
+\\ If K has a quadratic subfield, P has a rational root t, so I = c * L * M with
+\\ L = U - t V and M = V^2 (P / (T - t))(U / V). As forms in x, L = lam * N and
+\\ M = mu * Q with N and Q primitive over Z, so I(x) = +-1 forces N(x) = +-1 and
+\\ Q(x) = +-1, i.e. L(U, V) = +-lam and M(U, V) = +-mu: a line and a conic in the
+\\ (U, V) plane, which meet in at most two points per choice of signs. These must
+\\ be rational, with U in (1/dU) Z and V in (1/dV) Z (dU, dV the denominators of U
+\\ and V). E.g. for 4.2.1600.1 there are none, so it is not monogenic. Every
+\\ rational root of P gives such conditions; the candidates must satisfy all.
+\\ Candidates (u, v) left over are then tested locally: U(x) = u, V(x) = v must be
+\\ solvable modulo small prime powers.
+\\
+\\ Returns 0 if this proves O_K is not monogenic, and -1 otherwise (it never finds
+\\ generators: the equations U(x) = u, V(x) = v can have infinitely many solutions
+\\ in the real case; leave those fields to the search).
+
+\\ The rational content of a polynomial in several variables.
+mono_rcontent(p) = if (type(p) == "t_POL", content(apply(mono_rcontent, Vec(p))), p);
+
+\\ [U, V, P, c] as above, for alpha on nf.zk with x1 = 0 and the variables X, or 0
+\\ if the exact check fails. J is the index form in X.
+mono_resolvent_UV(nf, X, J) =
+{
+  my(f = nf.pol, v = variable(f), r, B, th, Vi, A1 = 0, A2 = 0, s, P, U, V, c,
+     pairs = [[1, 2, 3, 4], [1, 3, 2, 4], [1, 4, 2, 3]], ap = (z) -> bestappr(real(z), 10^40));
+  if (poldegree(f) != 4, return(0));
+  localprec(200);
+  r = polroots(f);
+  B = vector(4, j, vector(4, i, subst(lift(nf.zk[j]), v, r[i])));
+  th = vector(3, k, my(p = pairs[k]); r[p[1]] * r[p[2]] + r[p[3]] * r[p[4]]);
+  Vi = matrix(3, 3, k, e, th[k]^(e - 1))^-1;
+  for (j = 2, 4, for (l = j, 4,
+    my(cv, rr);
+    cv = vector(3, k, my(p = pairs[k]);
+      sum(h = 0, 1, my(a = p[2 * h + 1], b = p[2 * h + 2]);
+        if (j == l, B[j][a] * B[j][b], B[j][a] * B[l][b] + B[l][a] * B[j][b])));
+    rr = Vi * cv~;
+    A1 += ap(rr[2]) * X[j - 1] * X[l - 1];
+    A2 += ap(rr[3]) * X[j - 1] * X[l - 1]));
+  s = ap(vecsum(th));
+  P = 'T^3 - s * 'T^2 + ap(th[1] * th[2] + th[1] * th[3] + th[2] * th[3]) * 'T - ap(th[1] * th[2] * th[3]);
+  U = A1 + s * A2; V = A2;
+  if (V == 0, return(0));
+  c = simplify(J / (V^3 * subst(P, 'T, U / V)));
+  if (type(c) != "t_INT" && type(c) != "t_FRAC", return(0));
+  [U, V, P, c];
+}
+
+\\ Whether q1(x) = u and q2(x) = v (rational ternary forms in X) is solvable mod m,
+\\ as a necessary condition (both sides scaled to integers).
+mono_local_pair(q1, q2, X, u, v, m) =
+{
+  my(G = vector(2), t = vector(2), d, M = 2 * m);
+  foreach ([[1, q1, u], [2, q2, v]], e,
+    d = denominator(mono_rcontent(e[2])) * denominator(e[3]);
+    G[e[1]] = simplify(matrix(3, 3, a, b, deriv(deriv(2 * d * e[2], X[a]), X[b])));
+    t[e[1]] = 2 * d * e[3]);
+  forvec (w = vector(3, i, [0, m - 1]),
+    my(x = w~);
+    if ((x~ * G[1] * x / 2 - t[1]) % M == 0 && (x~ * G[2] * x / 2 - t[2]) % M == 0, return(1)));
+  0;
+}
+
+mono_resolvent_test(nf, X, J, moduli = [2, 4, 8, 16, 32, 3, 9, 27, 5, 25, 7, 11, 13]) =
+{
+  my(R, U, V, P, c, rts, dU, dV, cands = 0);
+  if (#mono_common_index_divisors(nf), return(0));
+  R = mono_resolvent_UV(nf, X, J);
+  if (!R, return(-1));
+  [U, V, P, c] = R;
+  rts = nfroots(, subst(P, 'T, 'z));
+  if (!#rts, return(-1));
+  dU = denominator(mono_rcontent(U)); dV = denominator(mono_rcontent(V));
+  foreach (rts, t,
+    my(L = U - t * V, Mh = P / ('T - t), lam, mu, new = List());
+    lam = mono_rcontent(L);
+    mu = mono_rcontent(simplify(V^2 * subst(Mh, 'T, U / V)));
+    foreach ([lam, -lam], l0, foreach ([mu, -mu], m0,
+      my(q = simplify('w^2 * subst(Mh, 'T, (l0 + t * 'w) / 'w)) - m0);
+      if (q == 0, return(-1));          \\ the line lies on the conic: no bound
+      foreach (nfroots(, q / mono_rcontent(q)), v0,
+        my(u0 = l0 + t * v0);
+        if (denominator(u0 * dU) == 1 && denominator(v0 * dV) == 1, listput(new, [u0, v0])))));
+    cands = if (cands === 0, Set(new), setintersect(cands, Set(new))));
+  foreach (cands, uv,
+    if ([1 | m <- moduli, !mono_local_pair(U, V, X, uv[1], uv[2], m)] == [], return(-1)));
+  0;
 }

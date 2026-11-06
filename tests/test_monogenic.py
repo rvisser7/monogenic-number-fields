@@ -119,10 +119,21 @@ class TestFactorIndexForm(unittest.TestCase):
         self.assertEqual(factor_generator(ISSUE_EXAMPLES["4.0.1040.2"]), (True, [2, 6, 3, -2, 1]))
         self.assertEqual(factor_generator(ISSUE_EXAMPLES["4.0.1413.1"]), (True, [13, -9, -2, 0, 1]))
 
+    def test_real_subfield(self):
+        # D4 fields with a real quadratic subfield: no definite factor, but the line and
+        # conic in the (U, V) plane (cubic resolvent) have no admissible common point
+        self.assertEqual(factor_generator([-4, 0, -2, 0, 1]), (True, None))  # 4.2.1600.1
+        self.assertIsNone(obstruction([-4, 0, -2, 0, 1]))
+        self.assertEqual(factor_generator([4, 2, -5, -1, 1]), (True, None))  # 4.4.2225.1
+        self.assertEqual(factor_generator([-1, -3, 0, -1, 1]), (True, None))  # 4.2.775.1
+        # here a candidate (U, V) is left, and U(x), V(x) never take it mod 16
+        self.assertEqual(factor_generator([6, -6, -9, 0, 1]), (True, None))
+
     def test_not_applicable(self):
-        # totally real and mixed D4 fields: no definite factor
-        self.assertEqual(factor_generator([4, 2, -5, -1, 1]), (False, None))
-        self.assertEqual(factor_generator([-1, -3, 0, -1, 1]), (False, None))
+        # S4 (irreducible cubic resolvent)
+        self.assertEqual(factor_generator([-12, 16, -5, -1, 1]), (False, None))
+        # 4.4.31808.1 is monogenic, with a generator that is not the root: never decided
+        self.assertEqual(factor_generator([28, 12, -11, -2, 1]), (False, None))
 
     def test_quartic_fields_agree(self):
         # Totally complex quartic fields with a quadratic subfield, |D| <= 1500: the
