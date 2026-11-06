@@ -9,7 +9,9 @@ SCRIPTS = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__)
 sys.path.insert(0, SCRIPTS)
 
 import compare_lmfdb  # noqa: E402
-from compare_lmfdb import DBSource, FileSource, compare  # noqa: E402
+from compare_lmfdb import DBSource, FileSource, Log, compare  # noqa: E402
+import contextlib  # noqa: E402
+import io  # noqa: E402
 
 # label: (LMFDB monogenic, LMFDB coeffs), as in nf_fields (monogenic may be null)
 LMFDB = {
@@ -77,9 +79,15 @@ class TestCompare(unittest.TestCase):
     def test_db_source(self):
         sys.modules["lmf"] = types.SimpleNamespace(db=types.SimpleNamespace(nf_fields=FakeTable(LMFDB)))
         try:
-            known, counts = DBSource(with_coeffs=True).degree(3)
+            with contextlib.redirect_stdout(io.StringIO()) as out:
+                known, counts = DBSource(with_coeffs=True).degree(3, Log(every=0))
         finally:
             del sys.modules["lmf"]
+        # progress: the counts, then a line per row read (every=0), then the total
+        lines = out.getvalue().splitlines()
+        self.assertIn("degree 3: 10 LMFDB fields, 2 with monogenic = 0", lines[1])
+        self.assertIn("1 LMFDB fields with monogenic != 0 read so far", lines[2])
+        self.assertIn("degree 3: 7 LMFDB fields with monogenic != 0 read", lines[-1])
         self.assertEqual(set(known), {label for label, (m, _) in LMFDB.items() if m not in (0, None) and label[0] == "3"})
         self.assertEqual(known["3.1.104.1"], (1, [-2, 1, -1, 1]))
         self.assertEqual((counts[1], counts[-1], counts[0], counts[None], counts["other"], counts["total"]),
@@ -97,7 +105,7 @@ class TestCompare(unittest.TestCase):
         finally:
             os.unlink(fh.name)
         self.assertEqual(source.degrees(), [3, 4])
-        known, counts = source.degree(3)
+        known, counts = source.degree(3, Log(quiet=True))
         self.assertEqual((counts[1], counts[-1], counts[0], counts[None], counts["other"], counts["total"]),
                          (3, 3, 2, 1, 1, 10))
         self.check(compare(OURS, known))
@@ -114,6 +122,7 @@ class TestCompare(unittest.TestCase):
             proc = subprocess.run(run, capture_output=True, text=True)
             self.assertEqual(proc.returncode, 0, proc.stdout + proc.stderr)
             self.assertIn("0 conflicts", proc.stdout)
+            self.assertIn("200 LMFDB fields; 200 agree, 0 conflicts", proc.stdout)  # progress line
             label, mono, _ = rows[0]
             with open(path, "a") as fh:
                 fh.write("%s|%d\n" % (label, -mono))  # the later line wins

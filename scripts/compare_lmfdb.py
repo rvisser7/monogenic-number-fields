@@ -24,6 +24,10 @@ counts. Or they come from a file (--lmfdb FILE) with lines `label|monogenic` or
 nf_fields; then the fields of the file are taken to be all the LMFDB fields of those
 degrees.
 
+While it runs it prints progress lines on stdout, starting with the time elapsed: what it is
+reading or counting, the number of LMFDB rows read so far every --progress-every seconds
+(default 10), and a one-line result as each degree finishes. --quiet leaves them out.
+
 Files written by --write DIR, with all degrees together:
   conflicts.txt          label|ours|lmfdb|zk_coeffs (ours)
   ours_only.txt          label|monogenic, for the fields only we know: an LMFDB update
@@ -44,12 +48,33 @@ import argparse
 import glob
 import os
 import sys
+import time
 from collections import Counter
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from monogenic import DATA_DIR, NULL, data_path, format_coeffs, label_key, parse_coeffs, read_data
+from progress import fmt_time
 
 UNKNOWN = (0, None)
+
+
+class Log:
+    """Progress lines on stdout, each with the time since the start, so a long run
+    shows it is busy. say() prints at once; tick() at most every `every` seconds."""
+
+    def __init__(self, every=10, quiet=False):
+        self.t0 = self.last = time.time()
+        self.every = every
+        self.quiet = quiet
+
+    def say(self, msg):
+        self.last = time.time()
+        if not self.quiet:
+            print("[%s] %s" % (fmt_time(self.last - self.t0), msg), flush=True)
+
+    def tick(self, msg):
+        if time.time() - self.last >= self.every:
+            self.say(msg)
 
 
 def parse_degrees(s):
@@ -76,16 +101,21 @@ class DBSource:
         self.table = db.nf_fields
         self.cols = ["label", "monogenic"] + (["coeffs"] if with_coeffs else [])
 
-    def degree(self, n):
+    def degree(self, n, log):
         """(known, counts): known is {label: (monogenic, coeffs or None)} for the fields
         with monogenic not 0 or null, counts is a Counter with keys 1, -1, 0, None (the
         number of fields with that value), 'other' and 'total'."""
+        counts = Counter()
+        log.say("degree %d: counting the LMFDB fields" % n)
+        counts["total"] = self.table.count({"degree": n})
+        counts[0] = self.table.count({"degree": n, "monogenic": 0})
+        log.say("degree %d: %d LMFDB fields, %d with monogenic = 0; reading the rest"
+                % (n, counts["total"], counts[0]))
         known = {}
         for r in self.table.search({"degree": n, "monogenic": {"$ne": 0}}, self.cols):
             known[r["label"]] = (r["monogenic"], [int(c) for c in r["coeffs"]] if "coeffs" in r else None)
-        counts = Counter()
-        counts["total"] = self.table.count({"degree": n})
-        counts[0] = self.table.count({"degree": n, "monogenic": 0})
+            log.tick("degree %d: %d LMFDB fields with monogenic != 0 read so far" % (n, len(known)))
+        log.say("degree %d: %d LMFDB fields with monogenic != 0 read" % (n, len(known)))
         for mono, _ in known.values():
             counts[mono if mono in (1, -1) else "other"] += 1
         counts[None] = counts["total"] - counts[0] - counts[1] - counts[-1] - counts["other"]
@@ -110,7 +140,7 @@ class FileSource:
     def degrees(self):
         return sorted(self.fields)
 
-    def degree(self, n):
+    def degree(self, n, log):
         fields = self.fields.get(n, {})
         known = {label: v for label, v in fields.items() if v[0] not in UNKNOWN}
         counts = Counter()
@@ -176,8 +206,13 @@ def main():
                         help="print at most N fields of each list per degree (default 10; "
                              "conflicts and unexpected values are always all printed)")
     parser.add_argument("--write", metavar="DIR", help="write the full lists to files in DIR")
+    parser.add_argument("--progress-every", type=float, default=10, metavar="SECONDS",
+                        help="while reading from the LMFDB, print progress this often (default 10)")
+    parser.add_argument("-q", "--quiet", action="store_true", help="no progress lines")
     args = parser.parse_args()
+    log = Log(args.progress_every, args.quiet)
 
+    log.say("reading %s" % args.lmfdb if args.lmfdb else "connecting to the LMFDB")
     source = FileSource(args.lmfdb) if args.lmfdb else DBSource(with_coeffs=bool(args.write))
     if args.degrees:
         degrees = parse_degrees(args.degrees)
@@ -194,12 +229,18 @@ def main():
     for n in degrees:
         ours = {}
         if os.path.exists(data_path(n)):
+            log.say("degree %d: reading %s" % (n, os.path.basename(data_path(n))))
             ours = {label: (mono, coeffs) for label, mono, coeffs in read_data(data_path(n))}
-        known, counts = source.degree(n)
+        known, counts = source.degree(n, log)
         if args.lmfdb and not counts["total"]:
             details.append("degree %d: not in %s, skipped" % (n, args.lmfdb))
             continue
         result = compare(ours, known)
+        log.say("degree %d: %d rows here, %d LMFDB fields; %d agree, %d conflicts, %d only here, "
+                "%d only in the LMFDB" % (
+                    n, len(ours), counts["total"], len(result["agree_yes"]) + len(result["agree_no"]),
+                    len(result["conflict"]), len(result["ours_only_yes"]) + len(result["ours_only_no"]),
+                    len(result["lmfdb_only_yes"]) + len(result["lmfdb_only_no"])))
         bad.update(conflicts=len(result["conflict"]), unexpected=len(result["unexpected"]))
         table.append(summary_row(n, ours, counts, result))
         total.update({i: int(v) for i, v in enumerate(table[-1][1:])})
@@ -238,6 +279,8 @@ def main():
                 files["unexpected"].write("%s|%r\n" % (label, known[label][0]))
         sys.stdout.flush()
 
+    log.say("done")
+    print()
     if len(table) > 1:
         table.append(["all"] + [str(total[i]) for i in range(len(SUMMARY))])
     print_table(table)
