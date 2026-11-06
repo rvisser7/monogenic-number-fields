@@ -129,8 +129,19 @@ class TestFactorIndexForm(unittest.TestCase):
         # here a candidate (U, V) is left, and U(x), V(x) never take it mod 16
         self.assertEqual(factor_generator([6, -6, -9, 0, 1]), (True, None))
 
+    def test_totally_complex(self):
+        # S4: the cubic resolvent is irreducible, so a Thue equation gives (U, V); the
+        # field is totally complex, so a definite U - sV leaves finitely many x
+        self.assertEqual(factor_generator([4, 1, -1, -1, 1]), (True, None))  # 4.0.3636.1
+        self.assertIsNone(obstruction([4, 1, -1, -1, 1]))
+        self.assertIsNone(find_generator([4, 1, -1, -1, 1], 3))
+        # generators stored from Magma
+        self.assertEqual(factor_generator([4, -4, 2, -1, 1]), (True, [8, 3, -5, -1, 1]))  # 4.0.2292.1
+        self.assertEqual(factor_generator([4, -2, -1, 0, 1]), (True, [7, -3, 6, -1, 1]))  # 4.0.2920.1
+
     def test_not_applicable(self):
-        # S4 (irreducible cubic resolvent)
+        # S4, mixed signature: the Thue equation leaves (U, V), and no local test helps,
+        # but it is monogenic (4.2.28856.1)
         self.assertEqual(factor_generator([-12, 16, -5, -1, 1]), (False, None))
         # 4.4.31808.1 is monogenic, with a generator that is not the root: never decided
         self.assertEqual(factor_generator([28, 12, -11, -2, 1]), (False, None))

@@ -89,14 +89,29 @@ no generator for a field marked -1, and none smaller than the stored one for a f
   take one of two values each. That is a line meeting a conic in the $(U, V)$ plane: at most two
   points for each choice of signs, and they must be rational with the right denominators. Often
   there are none (e.g. 4.2.1600.1: $5Q = (5x_2^2 - 2B)^2 + 16N^2$, so $\lvert I \rvert \ge 16/5$);
-  otherwise $U(x) = u$, $V(x) = v$ is tested modulo small prime powers. This never finds a
-  generator, so monogenic fields with a real $k$ are left to the search.
+  otherwise $U(x) = u$, $V(x) = v$ is tested modulo small prime powers.
 
-  On all 5,039 C4, V4 and D4 fields with $\lvert D \rvert \le 10^5$ (every signature) it decides
-  4,968 (4,297 not monogenic, 1,765 of them beyond the reach of `--method local`) in about 10
-  minutes; of the 71 left, 37 are monogenic. It agrees with every row in `data/`, except that
-  for 4.0.23517.2 and 4.0.76432.2 it finds a more canonical generator than the stored one (same
-  $T_2$, smaller $S(P)$). S4 and A4 fields (irreducible resolvent) are skipped.
+  *Totally complex quartic fields, all of them.* Without a quadratic subfield the resolvent is
+  irreducible and $c \, v^3 P(u/v) = \pm 1$ is a cubic Thue equation, which PARI's `thue` solves
+  completely and unconditionally, so again only finitely many $(U, V)$ are allowed. If $K$ is
+  totally complex, with $\alpha_1, \alpha_2$ and $\alpha_3, \alpha_4$ complex conjugate,
+  $\phi_1 - \phi_2 = \lvert \alpha_1 - \bar\alpha_3 \rvert^2$ and
+  $\phi_1 - \phi_3 = \lvert \alpha_1 - \alpha_3 \rvert^2$ are $\ge 0$ (with
+  $\phi_1 = \alpha_1\alpha_2 + \alpha_3\alpha_4$ and so on), so some $U - sV$ is a definite
+  ternary form, and $U(x) = u$, $V(x) = v$ leaves finitely many $x$ (`qfminim`). So for every
+  totally complex quartic field this decides monogenicity and finds the canonical $\alpha$
+  exactly, like Magma. E.g. 4.0.3636.1 (S4): the Thue equation has two solutions, and neither
+  comes from any $x$, so it is not monogenic. For the other signatures it only proves
+  non-monogenicity; monogenic fields whose root does not generate are left to the search.
+
+  Checks (fields from `nflist`): it decides all 1,813 totally complex quartic fields with
+  $\lvert D \rvert \le 30000$ (779 monogenic), giving the stored generator for every one in
+  `data/`; of the 5,039 C4, V4 and D4 fields with $\lvert D \rvert \le 10^5$ (every signature)
+  it decided 4,968 before the Thue step was added; of the 866 mixed and totally real S4
+  fields with $\lvert D \rvert \le 20000$ it decides 770, and 91 of the 96 left are monogenic.
+  It never contradicts a row in `data/` or the search, except that for 4.0.23517.2 and
+  4.0.76432.2 it finds a more canonical generator than the stored one (same $T_2$, smaller
+  $S(P)$).
 * **PARI brute force** ([`scripts/monogenic.gp`](scripts/monogenic.gp)): search
   $\alpha = \sum_{i \ge 2} c_i \omega_i$ over the LLL-reduced integral basis with
   $\max |c_i| = 1, 2, \dots, B$, computing $[\mathcal{O}_K : \mathbb{Z}[\alpha]]$ as a determinant.
@@ -129,7 +144,7 @@ no generator for a field marked -1, and none smaller than the stored one for a f
 | all | polredabs roots that generate $\mathcal{O}_K$, from `--method polredabs` |
 | 2 | done for $\lvert D \rvert \le 1000$ (`generate_quadratic.py`): every quadratic field is monogenic |
 | 3 | exact (Magma, or PARI Thue solver) |
-| 4 | exact with Magma; exact with PARI (`--method factor`) for fields with an imaginary quadratic subfield, and it proves most non-monogenic fields with a real one |
+| 4 | exact with Magma; exact with PARI (`--method factor`) for all totally complex fields, and it proves most other non-monogenic fields |
 | $\ge 5$ | PARI brute force for 1, common index divisors and local obstructions for -1 |
 
 ## Scripts
@@ -142,7 +157,7 @@ sage -python scripts/find_generators.py --degrees 5 --method pari -B 4
 sage -python scripts/find_generators.py --degrees 3 --input fields.txt --print   # "label|[coeffs]" lines
 sage -python scripts/find_generators.py --degrees 3 --method thue --max-disc 10^5   # exact, no Magma
 sage -python scripts/find_generators.py --degrees 5-8 --method local --only-new  # prove the rest are not monogenic
-sage -python scripts/find_generators.py --degrees 4 --method factor --only-new   # quartics with a quadratic subfield
+sage -python scripts/find_generators.py --degrees 4 --method factor --only-new   # exact for totally complex quartics
 sage -python scripts/find_generators.py --degrees 6 --method pari --lmfdb-monogenic -B 4  # LMFDB says monogenic, no generator here yet
 python3 scripts/merge.py rows.txt [--replace]                       # merge rows from a manual Magma run
 python3 scripts/check_data.py [--fix]                               # validate every data/degree<n>.txt

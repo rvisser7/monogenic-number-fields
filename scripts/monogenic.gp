@@ -236,8 +236,8 @@ mono_complete_basis(K) =
 \\ canonical generator (as in mono_generator) as its minimal polynomial, 0 if O_K is
 \\ provably not monogenic, or -1 if the method does not decide (no semidefinite
 \\ quadratic factors, or they leave more than one coordinate free). For quartic
-\\ fields it then tries mono_resolvent_test (below), which can prove more fields
-\\ not monogenic, but never finds generators.
+\\ fields it then tries mono_resolvent_generator (below): exact for every totally
+\\ complex quartic field, and for the others it can prove non-monogenicity.
 mono_factor_generator(nf) =
 {
   my(n = poldegree(nf.pol), X, Y, J, F, g, G, sg, S, Q = List(), r, free, U, IY, Gp, V, w, xw, p,
@@ -257,10 +257,10 @@ mono_factor_generator(nf) =
     if (sg[1] && sg[2], next);
     listput(Q, [g, if (sg[1], 1, -1)]);
     S += if (sg[1], G, -G));
-  if (!#Q, return(if (n == 4, mono_resolvent_test(nf, X, J), -1)));
+  if (!#Q, return(if (n == 4, mono_resolvent_generator(nf, X, J), -1)));
   r = matrank(S);
   free = n - 1 - r;
-  if (free > 1, return(if (n == 4, mono_resolvent_test(nf, X, J), -1)));
+  if (free > 1, return(if (n == 4, mono_resolvent_generator(nf, X, J), -1)));
   U = if (free, mono_complete_basis(matkerint(S)), matid(n - 1));
   Gp = (U~ * S * U)[1 .. r, 1 .. r];
   IY = substvec(J, X, Vec(U * Y~));
@@ -354,28 +354,77 @@ mono_local_pair(q1, q2, X, u, v, m) =
   0;
 }
 
-mono_resolvent_test(nf, X, J, moduli = [2, 4, 8, 16, 32, 3, 9, 27, 5, 25, 7, 11, 13]) =
+\\ A positive definite member G = sign * (U - s V) (or sign * V) of the pencil of
+\\ quadratic forms with Gram matrices GU, GV, as [G, s, sign] (s = oo for V), or 0.
+mono_definite_pencil(GU, GV) =
 {
-  my(R, U, V, P, c, rts, dU, dV, cands = 0);
+  my(rr = vecsort([real(t) | t <- polroots(matdet(GU - 'w * GV)), abs(imag(t)) < 1e-10]), ts);
+  ts = if (#rr, concat([rr[1] - 1, rr[#rr] + 1], vector(#rr - 1, i, (rr[i] + rr[i + 1]) / 2)), [0]);
+  foreach (concat([oo], ts), t,
+    my(s = if (t == oo, oo, bestappr(t, 10^6)), G = if (s == oo, GV, GU - s * GV), sg = qfsign(G));
+    if (sg[1] == 3, return([G, s, 1]));
+    if (sg[2] == 3, return([-G, s, -1])));
+  0;
+}
+
+\\ Decide a quartic field with the cubic resolvent (see (5) above). The pairs
+\\ (u, v) = (U(x), V(x)) allowed by I(x) = +-1 are: with a rational root of P, the
+\\ points where a line meets a conic; if P is irreducible, the solutions of the
+\\ Thue equation c v^3 P(u / v) = +-1 (PARI's thue, unconditional with
+\\ thueinit(, 1)), scaled to integers. If K is totally complex, with a1, a2 and a3,
+\\ a4 complex conjugate, phi_1 - phi_2 = |a1 - conj(a3)|^2 and phi_1 - phi_3 =
+\\ |a1 - a3|^2 are >= 0, so some U - s V is positive or negative definite; on it,
+\\ U(x) = u, V(x) = v leaves finitely many x (qfminim), so this finds every
+\\ generator. Otherwise each (u, v) is tested modulo small prime powers.
+\\ Returns the canonical generator, 0 if O_K is provably not monogenic, -1 if
+\\ undecided.
+mono_resolvent_generator(nf, X, J, moduli = [2, 4, 8, 16, 32, 3, 9, 27, 5, 25, 7, 11, 13]) =
+{
+  my(R, U, V, P, c, rts, dU, dV, cands = 0, pen, sols = List(), best = 0, bestkey, al, key);
   if (#mono_common_index_divisors(nf), return(0));
   R = mono_resolvent_UV(nf, X, J);
   if (!R, return(-1));
   [U, V, P, c] = R;
-  rts = nfroots(, subst(P, 'T, 'z));
-  if (!#rts, return(-1));
+  if (denominator(content(P)) != 1, return(-1));
   dU = denominator(mono_rcontent(U)); dV = denominator(mono_rcontent(V));
-  foreach (rts, t,
-    my(L = U - t * V, Mh = P / ('T - t), lam, mu, new = List());
-    lam = mono_rcontent(L);
-    mu = mono_rcontent(simplify(V^2 * subst(Mh, 'T, U / V)));
-    foreach ([lam, -lam], l0, foreach ([mu, -mu], m0,
-      my(q = simplify('w^2 * subst(Mh, 'T, (l0 + t * 'w) / 'w)) - m0);
-      if (q == 0, return(-1));          \\ the line lies on the conic: no bound
-      foreach (nfroots(, q / mono_rcontent(q)), v0,
-        my(u0 = l0 + t * v0);
-        if (denominator(u0 * dU) == 1 && denominator(v0 * dV) == 1, listput(new, [u0, v0])))));
-    cands = if (cands === 0, Set(new), setintersect(cands, Set(new))));
+  rts = nfroots(, subst(P, 'T, 'z));
+  if (#rts,
+    foreach (rts, t,
+      my(L = U - t * V, Mh = P / ('T - t), lam, mu, new = List());
+      lam = mono_rcontent(L);
+      mu = mono_rcontent(simplify(V^2 * subst(Mh, 'T, U / V)));
+      foreach ([lam, -lam], l0, foreach ([mu, -mu], m0,
+        my(q = simplify('w^2 * subst(Mh, 'T, (l0 + t * 'w) / 'w)) - m0);
+        if (q == 0, return(-1));          \\ the line lies on the conic: no bound
+        foreach (nfroots(, q / mono_rcontent(q)), v0,
+          my(u0 = l0 + t * v0);
+          if (denominator(u0 * dU) == 1 && denominator(v0 * dV) == 1, listput(new, [u0, v0])))));
+      cands = if (cands === 0, Set(new), setintersect(cands, Set(new)))),
+    my(D = lcm(dU, dV), rhs = D^3 / c, th, ts);
+    if (denominator(rhs) != 1, return(0));
+    th = thueinit(subst(P, 'T, 'y), 1);
+    ts = concat(thue(th, rhs), thue(th, -rhs));
+    cands = Set([[s[1] / D, s[2] / D] | s <- ts, denominator(s[1] / D * dU) == 1 && denominator(s[2] / D * dV) == 1]));
+  if (!#cands, return(0));
+  if (nf.sign[1] != 0,
+    foreach (cands, uv,
+      if ([1 | m <- moduli, !mono_local_pair(U, V, X, uv[1], uv[2], m)] == [], return(-1)));
+    return(0));
+  my(GU = simplify(matrix(3, 3, a, b, deriv(deriv(U, X[a]), X[b]) / 2)),
+     GV = simplify(matrix(3, 3, a, b, deriv(deriv(V, X[a]), X[b]) / 2)));
+  pen = mono_definite_pencil(GU, GV);
+  if (!pen, return(-1));
+  my(G = pen[1], d = denominator(G));
   foreach (cands, uv,
-    if ([1 | m <- moduli, !mono_local_pair(U, V, X, uv[1], uv[2], m)] == [], return(-1)));
-  0;
+    my(val = pen[3] * if (pen[2] == oo, uv[2], uv[1] - pen[2] * uv[2]), W);
+    if (val <= 0, next);
+    W = qfminim(2 * d * G, floor(2 * d * val), , 0)[3];
+    for (k = 1, #W, foreach ([W[, k], -W[, k]], x,
+      if (substvec(U, X, Vec(x)) == uv[1] && substvec(V, X, Vec(x)) == uv[2]
+          && mono_index(nf, concat([0], x)) == 1, listput(sols, x)))));
+  for (i = 1, #sols,
+    al = mono_normalize(nf, nfbasistoalg(nf, concat([0], sols[i])));
+    key = mono_key(nf, al);
+    if (!best || lex(key, bestkey) < 0, best = al; bestkey = key));
+  if (best, minpoly(best), 0);
 }
