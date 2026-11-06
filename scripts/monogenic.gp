@@ -367,6 +367,50 @@ mono_definite_pencil(GU, GV) =
   0;
 }
 
+\\ All x in Z^3 with U(x) = u, V(x) = v (U, V rational ternary forms in X, (u, v)
+\\ != (0, 0)), or 0 if this fails (a degenerate case). Such x lie on the conic
+\\ H = v U - u V = 0, so (qfsolve, qfparam) x = (lam / g) w(p, q) with
+\\ w = M [p^2, pq, q^2]~, p, q coprime, g the content of w(p, q) and lam an
+\\ integer. As adj(M) w = det(M) [p^2, pq, q^2]~, g divides det(M). Then u = U(x) (or
+\\ v = V(x) if u = 0) becomes the quartic Thue equation
+\\ U(w(p, q)) = u g^2 / lam^2, for the finitely many possible g and lam, which
+\\ PARI's thue solves completely (thueinit(, 1)). This is how Gaal, Petho and
+\\ Pohst solve index form equations in quartic fields.
+mono_conic_solve(U, V, X, u, v) =
+{
+  my(T = if (u, [U, u], [V, v]), H = v * U - u * V, G, s0, M, w, F, dF, k = 0, Fk, tF, Del, out = List());
+  G = simplify(matrix(3, 3, a, b, deriv(deriv(H, X[a]), X[b]) / 2));
+  if (G == 0 || matdet(G) == 0, return(0));
+  G /= content(G);
+  s0 = qfsolve(G);
+  if (type(s0) != "t_COL", return([]));    \\ no rational point on the conic
+  M = qfparam(G, s0);
+  Del = matdet(M);
+  if (!Del, return(0));
+  w = M * ['p^2, 'p * 'q, 'q^2]~;
+  F = substvec(T[1], X, Vec(w));
+  if (F == 0, return(0));
+  dF = denominator(mono_rcontent(F)); F *= dF;
+  while (substvec(F, ['p, 'q], [1, k]) == 0, k++);
+  Fk = substvec(F, ['p, 'q], ['y, 1 + k * 'y]);   \\ q = q' + k p, dehomogenized at q' = 1
+  if (poldegree(Fk) != 4 || !issquarefree(Fk), return(0));
+  tF = thueinit(Fk, 1);
+  fordiv (abs(Del), g,
+    my(t = T[2] * g^2 * dF);
+    if (denominator(t) != 1 || !t, next);
+    fordiv (abs(t), l2,
+      if (!issquare(l2), next);
+      my(lam = sqrtint(l2));
+      foreach (thue(tF, t / l2), pq,
+        my(pp = pq[1], qq = pq[2] + k * pq[1], xx);
+        if (gcd(pp, qq) != 1, next);
+        xx = substvec(w, ['p, 'q], [pp, qq]) * lam / g;
+        foreach ([xx, -xx], y,
+          if (denominator(y) == 1 && substvec(U, X, Vec(y)) == u && substvec(V, X, Vec(y)) == v,
+            listput(out, y))))));
+  Set(out);
+}
+
 \\ Decide a quartic field with the cubic resolvent (see (5) above). The pairs
 \\ (u, v) = (U(x), V(x)) allowed by I(x) = +-1 are: with a rational root of P, the
 \\ points where a line meets a conic; if P is irreducible, the solutions of the
@@ -375,9 +419,11 @@ mono_definite_pencil(GU, GV) =
 \\ a4 complex conjugate, phi_1 - phi_2 = |a1 - conj(a3)|^2 and phi_1 - phi_3 =
 \\ |a1 - a3|^2 are >= 0, so some U - s V is positive or negative definite; on it,
 \\ U(x) = u, V(x) = v leaves finitely many x (qfminim), so this finds every
-\\ generator. Otherwise each (u, v) is tested modulo small prime powers.
-\\ Returns the canonical generator, 0 if O_K is provably not monogenic, -1 if
-\\ undecided.
+\\ generator. Otherwise each (u, v) is first tested modulo small prime powers,
+\\ and the ones left are solved exactly with mono_conic_solve. So this decides
+\\ every quartic field with irreducible nf.pol, up to the degenerate cases where
+\\ it returns -1. Returns the canonical generator, 0 if O_K is provably not
+\\ monogenic, -1 if undecided.
 mono_resolvent_generator(nf, X, J, moduli = [2, 4, 8, 16, 32, 3, 9, 27, 5, 25, 7, 11, 13]) =
 {
   my(R, U, V, P, c, rts, dU, dV, cands = 0, pen, sols = List(), best = 0, bestkey, al, key);
@@ -406,22 +452,23 @@ mono_resolvent_generator(nf, X, J, moduli = [2, 4, 8, 16, 32, 3, 9, 27, 5, 25, 7
     ts = concat(thue(th, rhs), thue(th, -rhs));
     cands = Set([[s[1] / D, s[2] / D] | s <- ts, denominator(s[1] / D * dU) == 1 && denominator(s[2] / D * dV) == 1]));
   if (!#cands, return(0));
-  if (nf.sign[1] != 0,
-    foreach (cands, uv,
-      if ([1 | m <- moduli, !mono_local_pair(U, V, X, uv[1], uv[2], m)] == [], return(-1)));
-    return(0));
   my(GU = simplify(matrix(3, 3, a, b, deriv(deriv(U, X[a]), X[b]) / 2)),
      GV = simplify(matrix(3, 3, a, b, deriv(deriv(V, X[a]), X[b]) / 2)));
-  pen = mono_definite_pencil(GU, GV);
-  if (!pen, return(-1));
-  my(G = pen[1], d = denominator(G));
-  foreach (cands, uv,
-    my(val = pen[3] * if (pen[2] == oo, uv[2], uv[1] - pen[2] * uv[2]), W);
-    if (val <= 0, next);
-    W = qfminim(2 * d * G, floor(2 * d * val), , 0)[3];
-    for (k = 1, #W, foreach ([W[, k], -W[, k]], x,
-      if (substvec(U, X, Vec(x)) == uv[1] && substvec(V, X, Vec(x)) == uv[2]
-          && mono_index(nf, concat([0], x)) == 1, listput(sols, x)))));
+  pen = if (nf.sign[1] == 0, mono_definite_pencil(GU, GV), 0);
+  if (pen,
+    my(G = pen[1], d = denominator(G));
+    foreach (cands, uv,
+      my(val = pen[3] * if (pen[2] == oo, uv[2], uv[1] - pen[2] * uv[2]), W);
+      if (val <= 0, next);
+      W = qfminim(2 * d * G, floor(2 * d * val), , 0)[3];
+      for (k = 1, #W, foreach ([W[, k], -W[, k]], x,
+        if (substvec(U, X, Vec(x)) == uv[1] && substvec(V, X, Vec(x)) == uv[2], listput(sols, x))))),
+    foreach (cands, uv,
+      if ([1 | m <- moduli, !mono_local_pair(U, V, X, uv[1], uv[2], m)] != [], next);
+      my(S = mono_conic_solve(U, V, X, uv[1], uv[2]));
+      if (S === 0, return(-1));
+      foreach (S, x, listput(sols, x))));
+  sols = [x | x <- sols, mono_index(nf, concat([0], x)) == 1];
   for (i = 1, #sols,
     al = mono_normalize(nf, nfbasistoalg(nf, concat([0], sols[i])));
     key = mono_key(nf, al);

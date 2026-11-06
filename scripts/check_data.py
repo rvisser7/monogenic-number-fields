@@ -17,9 +17,8 @@ independent check of the Magma results: it must find no generator for a field ma
 and no generator smaller (see monogenic.gp) than the stored one for a field marked 1.
 
 With --reprove, PARI decides each field again where it can: cubic fields exactly by
-solving the Thue equation (the row must match, generator included), quartic fields with an
-imaginary quadratic subfield exactly by factoring the index form (likewise; with a real
-one this can still prove a -1 row), and for the other rows marked -1 it looks for a common
+solving the Thue equation (the row must match, generator included), quartic fields exactly
+with --method factor (likewise), and for the other rows marked -1 it looks for a common
 index divisor or local obstruction. A -1 row
 without such a proof is counted but is not an error, since Magma may have proved it some
 other way.

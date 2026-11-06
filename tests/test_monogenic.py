@@ -139,12 +139,18 @@ class TestFactorIndexForm(unittest.TestCase):
         self.assertEqual(factor_generator([4, -4, 2, -1, 1]), (True, [8, 3, -5, -1, 1]))  # 4.0.2292.1
         self.assertEqual(factor_generator([4, -2, -1, 0, 1]), (True, [7, -3, 6, -1, 1]))  # 4.0.2920.1
 
+    def test_conic(self):
+        # Not totally complex: each (U, V) left by the Thue equation is solved exactly
+        # through the conic v U - u V = 0 and a quartic Thue equation.
+        self.assertEqual(factor_generator([-9, 1, 3, -1, 1]), (True, None))  # 4.2.10091.1, S4
+        self.assertIsNone(obstruction([-9, 1, 3, -1, 1]))
+        # generators stored from Magma
+        self.assertEqual(factor_generator([-12, 16, -5, -1, 1]), (True, [18, 10, -5, -1, 1]))  # 4.2.28856.1
+        self.assertEqual(factor_generator([28, 12, -11, -2, 1]), (True, [-2062, -1132, -179, -2, 1]))  # 4.4.31808.1
+
     def test_not_applicable(self):
-        # S4, mixed signature: the Thue equation leaves (U, V), and no local test helps,
-        # but it is monogenic (4.2.28856.1)
-        self.assertEqual(factor_generator([-12, 16, -5, -1, 1]), (False, None))
-        # 4.4.31808.1 is monogenic, with a generator that is not the root: never decided
-        self.assertEqual(factor_generator([28, 12, -11, -2, 1]), (False, None))
+        self.assertEqual(factor_generator([-2, 0, 0, 1]), (True, [-2, 0, 0, 1]))  # root generates
+        self.assertEqual(factor_generator([-20, 0, 0, 1]), (False, None))  # cubic
 
     def test_quartic_fields_agree(self):
         # Totally complex quartic fields with a quadratic subfield, |D| <= 1500: the

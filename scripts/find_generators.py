@@ -19,14 +19,10 @@ Methods:
     the PATH (or --magma).
   * thue (degree 3 only): PARI solves the index form equation, a cubic Thue equation,
     completely. Exact like magma, and gives the same rows, without needing Magma.
-  * factor (meant for degree 4): factors the index form over Z. For a quartic field with
-    an imaginary quadratic subfield one factor is a positive definite binary quadratic
-    form, which leaves finitely many cases, each a polynomial equation in one variable
-    (see monogenic.gp). Exact like thue for those fields, both ways, without Magma. Then
-    the cubic resolvent (a Thue equation if it is irreducible) and a definite quadratic
-    form decide every totally complex quartic field exactly; for the other signatures it
-    proves most non-monogenic fields, and leaves the rest. E.g. for the quartic fields
-    not decided yet:
+  * factor (degree 4): solves the index form equation exactly with PARI (factoring it,
+    the cubic resolvent and Thue equations, see monogenic.gp and README), so it decides
+    every quartic field both ways and finds the canonical generator, like magma but
+    without it. E.g. for the quartic fields not decided yet:
         --degrees 4 --method factor --only-new
   * pari: brute-force search over small elements (see monogenic.gp), any degree. When it
     finds nothing, the tests in `local` are tried; fields where both fail are not written.

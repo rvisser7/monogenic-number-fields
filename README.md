@@ -66,52 +66,45 @@ no generator for a field marked -1, and none smaller than the stored one for a f
   which PARI's `thue` solves completely and unconditionally. This decides monogenicity and finds
   the canonical $\alpha$ exactly, like Magma, and gives the same rows (checked on all 21,845 cubic
   fields with $\lvert D \rvert \le 10^5$).
-* **Factoring the index form** (`--method factor`, meant for degree 4): the index form $I(x)$
-  (see below) is a polynomial over $\mathbb{Z}$, so $I(x) = \pm 1$ forces each of its factors to
-  be $\pm 1$. For a quartic field $K$ with a quadratic subfield $k$ the cubic resolvent is
-  reducible and $I$ factors (Gaál, Pethő and Pohst): one factor is the norm form of $k$ on
-  $\mathcal{O}_K / (\mathcal{O}_k + \mathbb{Z})$, a binary quadratic form. When $k$ is imaginary
-  it is positive definite, so it equals 1 at only finitely many points (found with `qfminim`),
-  and at each of them $I(x) = \pm 1$ is a polynomial equation in the one remaining coordinate,
-  solved exactly with `nfroots`. This decides monogenicity and finds the canonical $\alpha$
-  exactly, like Magma, for every quartic field with an imaginary quadratic subfield (the
-  totally complex V4 fields, and the D4 fields whose quadratic subfield is imaginary); other
-  fields are skipped, unless the root of their polynomial generates. E.g. 4.0.1197.2 has no
-  common index divisor or local obstruction, but
-  $I = (x_3^2 - x_3 x_4 + x_4^2) \cdot Q(x_2, x_3, x_4)$, and $Q = \pm 1$ has no solution on the
-  six points where the first factor is 1, so it is not monogenic.
+* **Index form equation, PARI** (`--method factor`, degree 4): decides every quartic field
+  exactly, both ways, with the canonical $\alpha$, like Magma but without it. With
+  $\alpha = \sum x_i \omega_i$ the index form $I(x)$ (see below) is a ternary sextic form over
+  $\mathbb{Z}$, and $\mathcal{O}_K = \mathbb{Z}[\alpha]$ iff $I(x) = \pm 1$. Following Gaál,
+  Pethő and Pohst:
+  1. *Factoring.* $I = \pm 1$ forces each factor of $I$ over $\mathbb{Z}$ to be $\pm 1$. If $K$
+     has an imaginary quadratic subfield $k$, one factor is the norm form of $k$ on
+     $\mathcal{O}_K / (\mathcal{O}_k + \mathbb{Z})$, positive definite, so it is 1 at finitely
+     many points (`qfminim`), and on each of them $I = \pm 1$ is a polynomial equation in the one
+     remaining coordinate (`nfroots`). E.g. 4.0.1197.2:
+     $I = (x_3^2 - x_3 x_4 + x_4^2) \cdot Q(x)$, and $Q = \pm 1$ fails on all six points.
+  2. *Cubic resolvent.* In general $I = c \prod_l (U - t_l V)$, with $t_l$ the roots of the cubic
+     resolvent $P$ and $U$, $V$ ternary quadratic forms with rational coefficients (found
+     numerically, then the identity is checked exactly, so nothing depends on the numerics).
+     If $P$ is irreducible, $(U, V)$ solves a cubic Thue equation, which PARI's `thue` solves
+     completely and unconditionally. If $P$ has a rational root $t$ ($K$ has a quadratic
+     subfield), $I = c \, (U - tV) \, M(U, V)$ and both factors are fixed up to sign: a line
+     meeting a conic, at most two points per choice of signs. Either way only finitely many
+     $(u, v) = (U(x), V(x))$ are possible, often none (e.g. 4.2.1600.1, where
+     $\lvert I \rvert \ge 16/5$ for all $x \ne 0$).
+  3. *Finding $x$.* If $K$ is totally complex, with $\alpha_1, \alpha_2$ and $\alpha_3, \alpha_4$
+     complex conjugate, $\phi_1 - \phi_2 = \lvert \alpha_1 - \bar\alpha_3 \rvert^2 \ge 0$ and
+     $\phi_1 - \phi_3 = \lvert \alpha_1 - \alpha_3 \rvert^2 \ge 0$
+     ($\phi_1 = \alpha_1\alpha_2 + \alpha_3\alpha_4$ and so on), so some $U - sV$ is definite
+     and leaves finitely many $x$ (`qfminim`). Otherwise, after a quick test modulo small prime
+     powers, $x$ lies on the conic $vU - uV = 0$, parametrized with `qfsolve` and `qfparam` as
+     $x = (\lambda / g) \, w(p, q)$ with $w$ binary quadratic forms, $g \mid \det$ of the
+     parametrization, and $U(x) = u$ becomes a quartic Thue equation in $(p, q)$, again solved
+     by `thue`.
 
-  When $k$ is real (any signature) it can still prove that $K$ is *not* monogenic. Write
-  $I = c \prod_l (U - t_l V)$, with $t_l$ the roots of the cubic resolvent and $U$, $V$ two
-  ternary quadratic forms with rational coefficients (Gaál, Pethő and Pohst; found numerically,
-  then the identity is checked exactly). A rational root $t$ splits this as $I = c \, L \, M$,
-  $L = U - tV$ linear and $M$ quadratic in $(U, V)$, and $I = \pm 1$ forces $L$ and $M$ to
-  take one of two values each. That is a line meeting a conic in the $(U, V)$ plane: at most two
-  points for each choice of signs, and they must be rational with the right denominators. Often
-  there are none (e.g. 4.2.1600.1: $5Q = (5x_2^2 - 2B)^2 + 16N^2$, so $\lvert I \rvert \ge 16/5$);
-  otherwise $U(x) = u$, $V(x) = v$ is tested modulo small prime powers.
-
-  *Totally complex quartic fields, all of them.* Without a quadratic subfield the resolvent is
-  irreducible and $c \, v^3 P(u/v) = \pm 1$ is a cubic Thue equation, which PARI's `thue` solves
-  completely and unconditionally, so again only finitely many $(U, V)$ are allowed. If $K$ is
-  totally complex, with $\alpha_1, \alpha_2$ and $\alpha_3, \alpha_4$ complex conjugate,
-  $\phi_1 - \phi_2 = \lvert \alpha_1 - \bar\alpha_3 \rvert^2$ and
-  $\phi_1 - \phi_3 = \lvert \alpha_1 - \alpha_3 \rvert^2$ are $\ge 0$ (with
-  $\phi_1 = \alpha_1\alpha_2 + \alpha_3\alpha_4$ and so on), so some $U - sV$ is a definite
-  ternary form, and $U(x) = u$, $V(x) = v$ leaves finitely many $x$ (`qfminim`). So for every
-  totally complex quartic field this decides monogenicity and finds the canonical $\alpha$
-  exactly, like Magma. E.g. 4.0.3636.1 (S4): the Thue equation has two solutions, and neither
-  comes from any $x$, so it is not monogenic. For the other signatures it only proves
-  non-monogenicity; monogenic fields whose root does not generate are left to the search.
-
-  Checks (fields from `nflist`): it decides all 1,813 totally complex quartic fields with
-  $\lvert D \rvert \le 30000$ (779 monogenic), giving the stored generator for every one in
-  `data/`; of the 5,039 C4, V4 and D4 fields with $\lvert D \rvert \le 10^5$ (every signature)
-  it decided 4,968 before the Thue step was added; of the 866 mixed and totally real S4
-  fields with $\lvert D \rvert \le 20000$ it decides 770, and 91 of the 96 left are monogenic.
-  It never contradicts a row in `data/` or the search, except that for 4.0.23517.2 and
-  4.0.76432.2 it finds a more canonical generator than the stored one (same $T_2$, smaller
-  $S(P)$).
+  E.g. 4.0.3636.1 and 4.2.10091.1 (both S4, no local obstruction) are not monogenic: the
+  Thue equation leaves two $(u, v)$ each, and no $x$ gives them. Checks, on fields from
+  `nflist`: all 4,328 quartic fields with $\lvert D \rvert \le 30000$ are decided (2,410
+  monogenic, and 811 of them have no row in `data/` yet), giving the stored generator for every
+  one in `data/`, except that for 4.0.23517.2 (and 4.0.76432.2, found in an earlier check up to
+  $10^5$) it finds a more canonical one than the stored one (same $T_2$, smaller $S(P)$); it
+  never contradicts a row in `data/` or the search. A field takes from a few milliseconds to a
+  few seconds (about 0.3 s on average here). The method returns "undecided" only in degenerate cases
+  (e.g. a degenerate conic), which have not occurred.
 * **PARI brute force** ([`scripts/monogenic.gp`](scripts/monogenic.gp)): search
   $\alpha = \sum_{i \ge 2} c_i \omega_i$ over the LLL-reduced integral basis with
   $\max |c_i| = 1, 2, \dots, B$, computing $[\mathcal{O}_K : \mathbb{Z}[\alpha]]$ as a determinant.
@@ -144,7 +137,7 @@ no generator for a field marked -1, and none smaller than the stored one for a f
 | all | polredabs roots that generate $\mathcal{O}_K$, from `--method polredabs` |
 | 2 | done for $\lvert D \rvert \le 1000$ (`generate_quadratic.py`): every quadratic field is monogenic |
 | 3 | exact (Magma, or PARI Thue solver) |
-| 4 | exact with Magma; exact with PARI (`--method factor`) for all totally complex fields, and it proves most other non-monogenic fields |
+| 4 | exact with Magma, or with PARI (`--method factor`) |
 | $\ge 5$ | PARI brute force for 1, common index divisors and local obstructions for -1 |
 
 ## Scripts
@@ -157,12 +150,12 @@ sage -python scripts/find_generators.py --degrees 5 --method pari -B 4
 sage -python scripts/find_generators.py --degrees 3 --input fields.txt --print   # "label|[coeffs]" lines
 sage -python scripts/find_generators.py --degrees 3 --method thue --max-disc 10^5   # exact, no Magma
 sage -python scripts/find_generators.py --degrees 5-8 --method local --only-new  # prove the rest are not monogenic
-sage -python scripts/find_generators.py --degrees 4 --method factor --only-new   # exact for totally complex quartics
+sage -python scripts/find_generators.py --degrees 4 --method factor --only-new   # exact, no Magma
 sage -python scripts/find_generators.py --degrees 6 --method pari --lmfdb-monogenic -B 4  # LMFDB says monogenic, no generator here yet
 python3 scripts/merge.py rows.txt [--replace]                       # merge rows from a manual Magma run
 python3 scripts/check_data.py [--fix]                               # validate every data/degree<n>.txt
 sage -python scripts/check_data.py --source db --cross-check 2      # also against the LMFDB and the PARI search
-sage -python scripts/check_data.py --source db --reprove            # redo degree 3 with Thue, degree 4 by factoring, find proofs for -1 rows
+sage -python scripts/check_data.py --source db --reprove            # redo degrees 3, 4 exactly (Thue; --method factor, slow), proofs for -1 rows
 sage -python scripts/compare_lmfdb.py --write compare/              # compare with nf_fields.monogenic in the LMFDB
 python3 -m unittest discover tests                                  # run the tests (need cypari2)
 ```
