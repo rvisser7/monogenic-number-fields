@@ -24,6 +24,10 @@ counts. Or they come from a file (--lmfdb FILE) with lines `label|monogenic` or
 nf_fields; then the fields of the file are taken to be all the LMFDB fields of those
 degrees.
 
+With --min-disc and/or --max-disc only the fields with |disc| in that range are compared,
+on both sides (the LMFDB query gets a disc_abs condition, and our rows are filtered by the
+discriminant in their label), so a degree with millions of fields can be checked in part.
+
 While it runs it prints progress lines on stdout, starting with the time elapsed: what it is
 reading or counting, the number of LMFDB rows read so far every --progress-every seconds
 (default 10), and a one-line result as each degree finishes. --quiet leaves them out.
@@ -40,6 +44,7 @@ Files written by --write DIR, with all degrees together:
 Usage:
     sage -python scripts/compare_lmfdb.py
     sage -python scripts/compare_lmfdb.py --degrees 3-4 --show 50
+    sage -python scripts/compare_lmfdb.py --degrees 6 --max-disc 10^4
     sage -python scripts/compare_lmfdb.py --write compare/
     python3 scripts/compare_lmfdb.py --lmfdb nf_fields_monogenic.txt
 """
@@ -85,6 +90,40 @@ def parse_degrees(s):
     return sorted(set(out))
 
 
+def parse_int(s):
+    """An integer, also written as 10^6 or 1e6."""
+    if "^" in s:
+        b, e = s.split("^")
+        return int(b) ** int(e)
+    return int(float(s)) if "e" in s.lower() else int(s)
+
+
+class DiscRange:
+    """min_disc <= |disc| <= max_disc, either bound None for no bound."""
+
+    def __init__(self, min_disc=None, max_disc=None):
+        self.min, self.max = min_disc, max_disc
+
+    def query(self):
+        """The disc_abs condition for an LMFDB query, as a dict to add to the query."""
+        cond = {}
+        if self.min is not None:
+            cond["$gte"] = self.min
+        if self.max is not None:
+            cond["$lte"] = self.max
+        return {"disc_abs": cond} if cond else {}
+
+    def __contains__(self, label):
+        D = int(label.split(".")[2])
+        return (self.min is None or D >= self.min) and (self.max is None or D <= self.max)
+
+    def __str__(self):
+        if self.min is None and self.max is None:
+            return ""
+        return " with %s|disc|%s" % ("%d <= " % self.min if self.min is not None else "",
+                                     " <= %d" % self.max if self.max is not None else "")
+
+
 def data_degrees():
     return sorted(int(os.path.basename(p)[len("degree"):-len(".txt")])
                   for p in glob.glob(os.path.join(DATA_DIR, "degree*.txt")))
@@ -93,7 +132,8 @@ def data_degrees():
 class DBSource:
     """The LMFDB values from the database."""
 
-    def __init__(self, with_coeffs):
+    def __init__(self, with_coeffs, disc=None):
+        self.disc = disc or DiscRange()
         try:
             from lmfdb import db
         except ImportError:
@@ -106,13 +146,14 @@ class DBSource:
         with monogenic not 0 or null, counts is a Counter with keys 1, -1, 0, None (the
         number of fields with that value), 'other' and 'total'."""
         counts = Counter()
-        log.say("degree %d: counting the LMFDB fields" % n)
-        counts["total"] = self.table.count({"degree": n})
-        counts[0] = self.table.count({"degree": n, "monogenic": 0})
+        base = dict(degree=n, **self.disc.query())
+        log.say("degree %d: counting the LMFDB fields%s" % (n, self.disc))
+        counts["total"] = self.table.count(base)
+        counts[0] = self.table.count(dict(base, monogenic=0))
         log.say("degree %d: %d LMFDB fields, %d with monogenic = 0; reading the rest"
                 % (n, counts["total"], counts[0]))
         known = {}
-        for r in self.table.search({"degree": n, "monogenic": {"$ne": 0}}, self.cols):
+        for r in self.table.search(dict(base, monogenic={"$ne": 0}), self.cols):
             known[r["label"]] = (r["monogenic"], [int(c) for c in r["coeffs"]] if "coeffs" in r else None)
             log.tick("degree %d: %d LMFDB fields with monogenic != 0 read so far" % (n, len(known)))
         log.say("degree %d: %d LMFDB fields with monogenic != 0 read" % (n, len(known)))
@@ -125,7 +166,8 @@ class DBSource:
 class FileSource:
     """The LMFDB values from a file of lines label|monogenic[|coeffs]."""
 
-    def __init__(self, path):
+    def __init__(self, path, disc=None):
+        disc = disc or DiscRange()
         self.fields = {}
         with open(path) as fh:
             for line in fh:
@@ -133,6 +175,8 @@ class FileSource:
                 if len(cells) < 2 or not cells[0][:1].isdigit():
                     continue  # blank or header line
                 label, mono = cells[0], cells[1]
+                if label not in disc:
+                    continue
                 coeffs = parse_coeffs(cells[2]) if len(cells) > 2 and cells[2] != NULL else None
                 self.fields.setdefault(int(label.split(".")[0]), {})[label] = (
                     None if mono == NULL else int(mono), coeffs)
@@ -209,11 +253,14 @@ def main():
     parser.add_argument("--progress-every", type=float, default=10, metavar="SECONDS",
                         help="while reading from the LMFDB, print progress this often (default 10)")
     parser.add_argument("-q", "--quiet", action="store_true", help="no progress lines")
+    parser.add_argument("--min-disc", type=parse_int, help="only fields with |disc| >= this, e.g. 10^4")
+    parser.add_argument("--max-disc", type=parse_int, help="only fields with |disc| <= this, e.g. 10^4")
     args = parser.parse_args()
+    disc = DiscRange(args.min_disc, args.max_disc)
     log = Log(args.progress_every, args.quiet)
 
     log.say("reading %s" % args.lmfdb if args.lmfdb else "connecting to the LMFDB")
-    source = FileSource(args.lmfdb) if args.lmfdb else DBSource(with_coeffs=bool(args.write))
+    source = FileSource(args.lmfdb, disc) if args.lmfdb else DBSource(bool(args.write), disc)
     if args.degrees:
         degrees = parse_degrees(args.degrees)
     else:
@@ -230,10 +277,10 @@ def main():
         ours = {}
         if os.path.exists(data_path(n)):
             log.say("degree %d: reading %s" % (n, os.path.basename(data_path(n))))
-            ours = {label: (mono, coeffs) for label, mono, coeffs in read_data(data_path(n))}
+            ours = {label: (mono, coeffs) for label, mono, coeffs in read_data(data_path(n)) if label in disc}
         known, counts = source.degree(n, log)
         if args.lmfdb and not counts["total"]:
-            details.append("degree %d: not in %s, skipped" % (n, args.lmfdb))
+            details.append("degree %d: no fields%s in %s, skipped" % (n, disc, args.lmfdb))
             continue
         result = compare(ours, known)
         log.say("degree %d: %d rows here, %d LMFDB fields; %d agree, %d conflicts, %d only here, "
@@ -290,7 +337,8 @@ def main():
     for fh in files.values():
         fh.close()
     print()
-    print("%d conflicts, %d unexpected LMFDB values" % (bad["conflicts"], bad["unexpected"]))
+    print("%d conflicts, %d unexpected LMFDB values%s" % (bad["conflicts"], bad["unexpected"],
+                                                          ", for the fields" + str(disc) if str(disc) else ""))
     sys.exit(1 if bad["conflicts"] or bad["unexpected"] else 0)
 
 

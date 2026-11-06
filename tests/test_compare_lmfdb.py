@@ -44,16 +44,18 @@ class FakeTable:
     """Enough of a psycodict table for DBSource."""
 
     def __init__(self, rows):
-        self.rows = [{"label": label, "degree": int(label.split(".")[0]), "monogenic": mono, "coeffs": coeffs}
+        self.rows = [{"label": label, "degree": int(label.split(".")[0]), "disc_abs": int(label.split(".")[2]),
+                      "monogenic": mono, "coeffs": coeffs}
                      for label, (mono, coeffs) in rows.items()]
 
     def _match(self, row, query):
         for col, cond in query.items():
             if isinstance(cond, dict):
-                (op, val), = cond.items()
-                assert op == "$ne"
-                if row[col] is None or row[col] == val:  # SQL: NULL != 0 is not true
-                    return False
+                for op, val in cond.items():
+                    if row[col] is None:  # SQL: NULL != 0 is not true
+                        return False
+                    if not {"$ne": row[col] != val, "$gte": row[col] >= val, "$lte": row[col] <= val}[op]:
+                        return False
             elif row[col] != cond:
                 return False
         return True
@@ -109,6 +111,25 @@ class TestCompare(unittest.TestCase):
         self.assertEqual((counts[1], counts[-1], counts[0], counts[None], counts["other"], counts["total"]),
                          (3, 3, 2, 1, 1, 10))
         self.check(compare(OURS, known))
+
+    def test_disc_range(self):
+        from compare_lmfdb import DiscRange, parse_int
+        self.assertEqual(parse_int("10^4"), 10000)
+        self.assertEqual(parse_int("1e4"), 10000)
+        disc = DiscRange(None, 100)
+        self.assertEqual(disc.query(), {"disc_abs": {"$lte": 100}})
+        self.assertEqual(DiscRange().query(), {})
+        self.assertIn("3.1.76.1", disc)
+        self.assertNotIn("3.1.104.1", disc)
+        self.assertIn("3.1.104.1", DiscRange(104, 104))
+        # The database query gets the disc_abs condition; FakeTable checks it.
+        sys.modules["lmf"] = types.SimpleNamespace(db=types.SimpleNamespace(nf_fields=FakeTable(LMFDB)))
+        try:
+            known, counts = DBSource(False, DiscRange(50, 200)).degree(3, Log(quiet=True))
+        finally:
+            del sys.modules["lmf"]
+        self.assertEqual(sorted(known), ["3.1.104.1", "3.1.107.1", "3.1.76.1"])
+        self.assertEqual(counts["total"], 4)  # and 3.3.81.1, with monogenic = 0
 
     def test_script_on_data(self):
         # Against a copy of our own degree 3 rows the script finds no conflicts, and

@@ -190,7 +190,9 @@ degree, how many fields each side marks 1 and -1, how many agree, and
 `--write DIR` writes the full lists: `conflicts.txt`, `ours_only.txt` (`label|monogenic`),
 `lmfdb_only_yes.txt` and `lmfdb_only_no.txt` (`label|[coeffs]`, ready for
 `find_generators.py --input`) and `unexpected.txt` (LMFDB values other than 1, -1, 0, null).
-`--lmfdb FILE` reads `label|monogenic` lines from a file instead of the database.
+`--lmfdb FILE` reads `label|monogenic` lines from a file instead of the database. `--min-disc` and
+`--max-disc` (e.g. `--degrees 6 --max-disc 10^4`) compare only the fields with $\lvert D \rvert$ in
+that range, on both sides, for degrees with millions of fields.
 
 To run the search on just the fields the LMFDB says are monogenic but that have no generator
 here yet (no row, or a row marked 0 or -1), straight from the database:
