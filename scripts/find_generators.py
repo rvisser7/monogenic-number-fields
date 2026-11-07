@@ -11,7 +11,9 @@ Methods:
     writes them with monogenic_coeffs = f, which is the canonical generator (see README). This
     costs one polynomial discriminant per field, so a whole degree takes about as long as
     reading it from the LMFDB. With --lmfdb-index only the fields whose LMFDB `index`
-    column is 1 are read (faster still; each is still checked). Other fields are left
+    column is 1 are read. That column is the index of the field (the gcd of
+    [O_K : Z[alpha]] over all alpha), so this only skips fields with a common index
+    divisor, which are never monogenic. Other fields are left
     for the methods below. By rule 1 these replace any other stored generator.
   * magma (default for degree <= 4): IndexFormEquation, via magma/monogenic.m. Exact: it
     proves which fields are monogenic and finds the canonical generator, so its
@@ -189,7 +191,8 @@ def main():
     parser.add_argument("--method", choices=["magma", "thue", "factor", "pari", "local", "polredabs"],
                         help="default: magma for degree <= 4, pari above")
     parser.add_argument("--lmfdb-index", action="store_true",
-                        help="polredabs: only read the fields whose LMFDB index column is 1")
+                        help="polredabs: only read the fields whose LMFDB index column (the index of the "
+                             "field) is 1, skipping fields with a common index divisor")
     parser.add_argument("--magma", default="magma", help="the magma executable")
     parser.add_argument("-B", "--bound", type=int, default=3,
                         help="pari: max |coordinate| on the integral basis (default 3)")

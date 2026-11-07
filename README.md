@@ -56,7 +56,9 @@ no generator for a field marked -1, and none smaller than the stored one for a f
   canonical (rule 1 above), so run this first and leave the other fields to the methods below. By
   rule 1 these replace any other stored generator, and a field marked -1 is a conflict (see
   below). With `--lmfdb-index` it reads only
-  the fields whose LMFDB `index` column is 1, which is faster still; each is still checked.
+  the fields whose LMFDB `index` column is 1. That column is the index of the field (the gcd of
+  $[\mathcal{O}_K : \mathbb{Z}[\alpha]]$ over all $\alpha$, see below), so this skips just the
+  fields with a common index divisor, which are never monogenic.
 * **Magma** ([`magma/monogenic.m`](magma/monogenic.m)): `IndexFormEquation(O, 1)` returns all
   generators up to equivalence for fields of degree at most 4, so it decides monogenicity and finds
   the canonical $\alpha$ exactly. See the
@@ -238,12 +240,19 @@ replaces the -1 as above (add `--only-new` to leave those fields out).
 `index` column (in `nf_fields`) of each LMFDB field. For the LMFDB polynomial $f$ and $D$ the discriminant in the label, the stored
 $b_1, \dots, b_n$ (polynomials in $a$) are a basis of $\mathcal{O}_K$ iff they are linearly
 independent algebraic integers (each characteristic polynomial is in $\mathbb{Z}[x]$) spanning a
-lattice of discriminant $\det(B)^2 \operatorname{disc}(f) = D$; and `index` must be
-$[\mathcal{O}_K : \mathbb{Z}[a]] = \sqrt{\operatorname{disc}(f)/D}$. All exact, without computing
+lattice of discriminant $\det(B)^2 \operatorname{disc}(f) = D$. All exact, without computing
 $\mathcal{O}_K$, so it is fast (well under a millisecond per small field). `--nfdisc` also checks
 $D$ against PARI's `nfdisc` (slow for large discriminants). E.g. a stored basis $1, a, a^2, a^3$
 for 4.0.19982592.7 ($f = x^4 + 252x^2 + 8673$) is reported, since $\operatorname{disc}(f) = 2401^2 D$:
 it misses $(a^2 + 126)/49 = \sqrt 3$.
+
+The `index` column is the index of the field, $i(K) = \gcd [\mathcal{O}_K : \mathbb{Z}[\alpha]]$
+over all $\alpha \in \mathcal{O}_K$ with $K = \mathbb{Q}(\alpha)$, so $i(K) = 1$ does not mean that
+$K$ is monogenic (4.0.19982592.7 has index 1 but is not monogenic). The primes dividing $i(K)$ are
+the common index divisors, all $< n$, which Hensel's criterion reads off the splitting of $p$ in
+$K$. The script checks that the primes dividing `index` are exactly these, and that `index` divides
+$[\mathcal{O}_K : \mathbb{Z}[a]] = \sqrt{\operatorname{disc}(f)/D}$ (the exact power of each prime
+is not checked).
 
 ```
 sage -python scripts/check_lmfdb_zk.py --degrees 4 --max-disc 10^6

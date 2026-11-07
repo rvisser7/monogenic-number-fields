@@ -10,26 +10,35 @@ of integers O_K exactly when
   3. the lattice they span has discriminant D: disc(b_1, ..., b_n) = det(B)^2 disc(f) = D,
      where B is the matrix of the b_i on 1, a, ..., a^(n-1).
 Given 2, the lattice is a sublattice of O_K, of some index m, so its discriminant is
-m^2 D, and 3 says m = 1. The `index` column, [O_K : Z[a]], must equal sqrt(disc(f) / D). All of this is exact (PARI), and it does not need to
-compute O_K. With --nfdisc it also checks that D is PARI's discriminant of K (nfdisc,
-which factors disc(f), so it is slow for large discriminants).
+m^2 D, and 3 says m = 1. All of this is exact (PARI), and it does not need to compute O_K.
+
+The `index` column is the index of the field, i(K) = gcd of [O_K : Z[alpha]] over all
+alpha in O_K with K = Q(alpha) (so i(K) = 1 does not mean that K is monogenic). Its
+prime factors are the common index divisors of K, which are all < n and which Hensel's
+criterion finds from the splitting of p in K (p | i(K) iff, for some f, more primes
+above p have residue degree f than there are monic irreducible polynomials of degree f
+over F_p). The check is that the primes dividing `index` are exactly these, and that
+`index` divides i(a) = sqrt(disc(f) / D). (The exact power of each p is not checked.)
+With --nfdisc it also checks that D is PARI's discriminant of K (nfdisc, which factors
+disc(f), so it is slow for large discriminants).
 
 E.g. if the LMFDB gives 1, a, a^2, a^3 for 4.0.19982592.7 with f = x^4 + 252x^2 + 8673,
 then disc(f) = 2401^2 * 19982592, so that basis has index 2401 in O_K (it misses
-(a^2 + 126)/49 = sqrt(3)).
+(a^2 + 126)/49 = sqrt(3)), while its index column, 1, is right: 4.0.19982592.7 has no
+common index divisors.
 
 Fields come from the LMFDB database (`from lmfdb import db`, or lmfdb-lite, as in
 find_generators.py): coeffs and index from nf_fields, zk from nf_fields_extra (joined on
 the label, --batch labels per query). Or they come from a file (--input) with lines
     label|[coeffs]|zk|index
 where zk is a JSON list of strings in a, e.g.
-    4.0.19982592.7|[8673,0,252,0,1]|["1","a","1/49*a^2 + 18/7","1/49*a^3 + 25/7*a"]|2401
+    4.0.19982592.7|[8673,0,252,0,1]|["1","a","1/49*a^2 + 18/7","1/49*a^3 + 25/7*a"]|1
 and index may be \\N. Header lines are skipped.
 
 Each problem is printed as "label: ..." (at most --show per degree) and, with --write
 FILE, written as label|kind|message. The kinds are: format (zk missing, the wrong
 length, or not readable), dependent, not_integral, disc (the basis is not all of O_K),
-index (the index column disagrees), nfdisc. The exit status is 1 if there is a problem.
+index (the index column is not the index of the field), nfdisc. The exit status is 1 if there is a problem.
 
 Usage:
     sage -python scripts/check_lmfdb_zk.py --degrees 4 --max-disc 10^6
@@ -65,6 +74,32 @@ def parse_element(e, f):
     return g % f if g.type() == "t_POL" else g
 
 
+def common_index_divisors(f):
+    """The common index divisors of K = Q[x]/(f), i.e. the primes dividing the index
+    i(K) of the field (all < deg f), by Hensel's criterion (mono_common_index_divisors)."""
+    n = pari.poldegree(f)
+    ps = [int(p) for p in pari.primes([2, n - 1])] if n > 2 else []
+    if not ps:
+        return []
+    return [int(p) for p in pari("mono_common_index_divisors")(pari.nfinit([f, ps]))]
+
+
+def check_index(f, index, ind=None):
+    """Messages if `index` cannot be the index i(K) of K = Q[x]/(f): its primes must be
+    the common index divisors of K, and it must divide i(a) = ind = [O_K : Z[a]]."""
+    out = []
+    if index < 1:
+        return ["the index column is %d, not a positive integer" % index]
+    cid = common_index_divisors(f)
+    primes = [int(p) for p in pari.factor(index)[0]] if index > 1 else []
+    if primes != cid:
+        out.append("the index column is %d, but the common index divisors (the primes dividing "
+                   "the index of the field) are %s" % (index, "{%s}" % ", ".join(map(str, cid)) if cid else "none"))
+    if ind is not None and int(ind) % index != 0:
+        out.append("the index column is %d, which does not divide [O_K : Z[a]] = %s" % (index, ind))
+    return out
+
+
 def check_zk(label, coeffs, zk, index=None, nfdisc=False):
     """Problems [(kind, message)] with the LMFDB basis zk (and index column) of the field
     with this label and polynomial (ascending coeffs). Empty if zk is an integral basis."""
@@ -78,9 +113,8 @@ def check_zk(label, coeffs, zk, index=None, nfdisc=False):
     if ind is None or ind ** 2 * D != pari.poldisc(f):
         out.append(("disc", "disc(f) = %s is not a square times %d" % (pari.poldisc(f), D)))
         ind = None
-    if index is not None and ind is not None and int(index) != int(ind):
-        out.append(("index", "the index column is %s, but [O_K : Z[a]] = sqrt(disc(f) / D) = %s"
-                    % (index, ind)))
+    if index is not None:
+        out += [("index", msg) for msg in check_index(f, int(index), ind)]
     if zk is None:
         return out + [("format", "no zk")]
     if len(zk) != n:
