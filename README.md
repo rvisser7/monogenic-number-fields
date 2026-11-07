@@ -157,6 +157,7 @@ python3 scripts/check_data.py [--fix]                               # validate e
 sage -python scripts/check_data.py --source db --cross-check 2      # also against the LMFDB and the PARI search
 sage -python scripts/check_data.py --source db --reprove            # redo degrees 3, 4 exactly (Thue; --method factor, slow), proofs for -1 rows
 sage -python scripts/compare_lmfdb.py --write compare/              # compare with nf_fields.monogenic in the LMFDB
+sage -python scripts/check_lmfdb_zk.py --degrees 4 --write zk.txt      # check the LMFDB integral bases (zk, index)
 python3 -m unittest discover tests                                  # run the tests (need cypari2)
 ```
 
@@ -230,3 +231,26 @@ sage -python scripts/find_generators.py --degrees 6 --method pari --lmfdb-monoge
 This adds `monogenic = 1` to the `nf_fields` query and skips the fields already marked 1. A field
 marked -1 here is a conflict with the LMFDB; if the search finds a generator it is verified and
 replaces the -1 as above (add `--only-new` to leave those fields out).
+
+### Checking the LMFDB integral bases
+
+`scripts/check_lmfdb_zk.py` checks the integral basis `zk` and the `index` column of each
+`nf_fields` row. For the LMFDB polynomial $f$ and $D$ the discriminant in the label, the stored
+$b_1, \dots, b_n$ (polynomials in $a$) are a basis of $\mathcal{O}_K$ iff they are linearly
+independent algebraic integers (each characteristic polynomial is in $\mathbb{Z}[x]$) spanning a
+lattice of discriminant $\det(B)^2 \operatorname{disc}(f) = D$; and `index` must be
+$[\mathcal{O}_K : \mathbb{Z}[a]] = \sqrt{\operatorname{disc}(f)/D}$. All exact, without computing
+$\mathcal{O}_K$, so it is fast (well under a millisecond per small field). `--nfdisc` also checks
+$D$ against PARI's `nfdisc` (slow for large discriminants). E.g. a stored basis $1, a, a^2, a^3$
+for 4.0.19982592.7 ($f = x^4 + 252x^2 + 8673$) is reported, since $\operatorname{disc}(f) = 2401^2 D$:
+it misses $(a^2 + 126)/49 = \sqrt 3$.
+
+```
+sage -python scripts/check_lmfdb_zk.py --degrees 4 --max-disc 10^6
+sage -python scripts/check_lmfdb_zk.py --degrees 2-47 --write zk_problems.txt   # label|kind|message
+python3 scripts/check_lmfdb_zk.py --input fields.txt    # label|[coeffs]|["1","a",...]|index lines
+```
+
+Each problem has a kind: `format`, `dependent`, `not_integral`, `disc` (not all of
+$\mathcal{O}_K$, with its index when the elements are integral), `index`, `nfdisc`. The exit
+status is 1 if there is any. `--shard i/k` splits a run.

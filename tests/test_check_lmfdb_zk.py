@@ -1,0 +1,71 @@
+import os
+import subprocess
+import sys
+import tempfile
+import unittest
+
+SCRIPTS = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "scripts")
+sys.path.insert(0, SCRIPTS)
+
+from check_lmfdb_zk import check_zk  # noqa: E402
+
+F = [8673, 0, 252, 0, 1]  # 4.0.19982592.7, x^4 + 252x^2 + 8673
+GOOD = ["1", "a", "1/49*a^2 + 18/7", "1/49*a^3 + 25/7*a"]
+
+
+def kinds(problems):
+    return sorted(k for k, _ in problems)
+
+
+class TestCheckZk(unittest.TestCase):
+    def test_good(self):
+        self.assertEqual(check_zk("4.0.19982592.7", F, GOOD, 2401), [])
+        self.assertEqual(check_zk("4.0.19982592.7", F, GOOD, None, nfdisc=True), [])
+        self.assertEqual(check_zk("3.1.23.1", [-1, -1, 0, 1], ["1", "a", "a^2"], 1), [])
+        # coefficient lists work too, and any basis of O_K passes
+        self.assertEqual(check_zk("2.0.3.1", [1, -1, 1], [[1], [0, 1]], 1), [])
+        self.assertEqual(check_zk("2.0.3.1", [1, -1, 1], ["1", "a + 5"], 1), [])
+
+    def test_power_basis_is_wrong(self):
+        # the LMFDB bug: 1, a, a^2, a^3 is not O_K, and the index is 2401, not 1
+        p = check_zk("4.0.19982592.7", F, ["1", "a", "a^2", "a^3"], 1)
+        self.assertEqual(kinds(p), ["disc", "index"])
+        self.assertIn("index 2401 in O_K", dict(p)["disc"])
+
+    def test_not_integral(self):
+        p = check_zk("4.0.1197.2", [9, 3, -5, -1, 1], ["1", "a", "1/2*a^2", "a^3"])
+        self.assertEqual(kinds(p), ["disc", "not_integral"])
+        self.assertIn("zk element 3 (1/2*a^2) is not", dict(p)["not_integral"])
+
+    def test_format(self):
+        self.assertEqual(kinds(check_zk("3.1.23.1", [-1, -1, 0, 1], ["1", "a"])), ["format"])
+        self.assertEqual(kinds(check_zk("3.1.23.1", [-1, -1, 0, 1], None)), ["format"])
+        self.assertEqual(kinds(check_zk("3.1.23.1", [-1, -1, 0, 1], ["1", "b", "a^2"])), ["format"])
+        self.assertEqual(kinds(check_zk("3.1.23.1", [-1, -1, 0, 1], ["1", "a", "2*a"])), ["dependent"])
+
+    def test_wrong_label(self):
+        # a basis of O_K for a field whose discriminant is not the label's
+        self.assertIn("disc", kinds(check_zk("3.1.31.1", [-1, -1, 0, 1], ["1", "a", "a^2"])))
+        self.assertIn("nfdisc", kinds(check_zk("3.1.31.1", [-1, -1, 0, 1], ["1", "a", "a^2"], nfdisc=True)))
+
+    def test_script(self):
+        rows = ['label|coeffs|zk|index',
+                '4.0.19982592.7|[8673,0,252,0,1]|["1","a","a^2","a^3"]|1',
+                '3.1.23.1|[-1,-1,0,1]|["1","a","a^2"]|\\N']
+        with tempfile.TemporaryDirectory() as tmp:
+            src, out = os.path.join(tmp, "zk.txt"), os.path.join(tmp, "problems.txt")
+            with open(src, "w") as fh:
+                fh.write("\n".join(rows) + "\n")
+            proc = subprocess.run([sys.executable, os.path.join(SCRIPTS, "check_lmfdb_zk.py"),
+                                   "--input", src, "--write", out, "-q"], capture_output=True, text=True)
+            self.assertEqual(proc.returncode, 1, proc.stderr)
+            self.assertIn("degree 3: 1 fields checked, 0 with problems", proc.stdout)
+            self.assertIn("degree 4: 1 fields checked, 1 with problems; 1 disc; 1 index", proc.stdout)
+            with open(out) as fh:
+                lines = fh.read().splitlines()
+            self.assertEqual([line.split("|")[:2] for line in lines],
+                             [["4.0.19982592.7", "index"], ["4.0.19982592.7", "disc"]])
+
+
+if __name__ == "__main__":
+    unittest.main()
