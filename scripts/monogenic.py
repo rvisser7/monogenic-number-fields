@@ -1,8 +1,14 @@
 """Shared helpers: PARI interface and the data file format."""
 
+import contextlib
 import os
 import sys
 import time
+
+try:
+    import fcntl
+except ImportError:  # Windows: no locking (do not run merges in parallel there)
+    fcntl = None
 
 import cypari2
 
@@ -145,8 +151,37 @@ def format_data(rows):
 
 
 def write_data(path, rows):
-    with open(path, "w") as fh:
-        fh.write(format_data(rows))
+    """Write a data file atomically: the rows go to a temporary file next to it, which
+    then replaces it, so an interrupted run (Ctrl-C, a crash, a full disk) leaves either
+    the old file or the new one, never a truncated one."""
+    text = format_data(rows)
+    tmp = "%s.tmp%d" % (path, os.getpid())
+    try:
+        with open(tmp, "w") as fh:
+            fh.write(text)
+            fh.flush()
+            os.fsync(fh.fileno())
+        os.replace(tmp, path)
+    finally:
+        if os.path.exists(tmp):
+            os.remove(tmp)
+
+
+@contextlib.contextmanager
+def locked(path):
+    """Hold an exclusive lock on the data file `path` (through the file path + ".lock"),
+    so that runs in parallel, e.g. find_generators.py --shard 0/4, 1/4, ..., update it
+    one at a time. Without it, two runs could both read the file, add their own rows and
+    write it back, and the one writing last would drop the rows of the other."""
+    if fcntl is None:
+        yield
+        return
+    with open(path + ".lock", "a") as fh:
+        fcntl.flock(fh, fcntl.LOCK_EX)
+        try:
+            yield
+        finally:
+            fcntl.flock(fh, fcntl.LOCK_UN)
 
 
 def data_path(n):
@@ -197,7 +232,16 @@ def merge_data(path, rows, replace=False, source=None, log=None):
       more canonical generator that fails verification is a conflict and is logged.
     * Otherwise (both -1) the existing row is kept.
 
+    The file is locked while it is read, merged and written (see locked), so runs in
+    parallel can merge into the same file.
+
     Returns (added, replaced, kept, conflicts)."""
+    with locked(path):
+        return _merge_data(path, rows, replace, source, log)
+
+
+def _merge_data(path, rows, replace, source, log):
+    """merge_data, without the lock."""
     old = {row[0]: row for row in read_data(path)} if os.path.exists(path) else {}
     if source is None:
         source = " ".join([os.path.basename(sys.argv[0])] + sys.argv[1:])

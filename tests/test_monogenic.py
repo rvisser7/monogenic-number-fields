@@ -1,6 +1,7 @@
 import contextlib
 import io
 import os
+import subprocess
 import sys
 import tempfile
 import unittest
@@ -52,7 +53,7 @@ class TestGenerators(unittest.TestCase):
         self.assertTrue(monogenic.is_smaller(monogenic.generator_key([-1, -1, 1]),
                                              monogenic.generator_key([-1, 1, 1])))
 
-    def test_root_generates(self):
+    def test_search_keeps_root(self):
         # Z[2^(1/3)] is the full ring of integers, so the polynomial itself is kept.
         self.assertEqual(find_generator([-2, 0, 0, 1]), [-2, 0, 0, 1])
 
@@ -265,6 +266,61 @@ class TestMerge(unittest.TestCase):
         self.assertEqual(self.merge((0, None), (-1, None))[:2], ((-1, None), (0, 1, 0, 0)))
         self.assertEqual(self.merge((1, self.GEN), (0, None), True)[:2], ((1, self.GEN), (0, 0, 1, 0)))
         self.assertEqual(self.merge((-1, None), (-1, None))[:2], ((-1, None), (0, 0, 1, 0)))
+        self.assertEqual(self.logged(), [])
+
+    def test_write_data_is_atomic(self):
+        # A write that fails part way (here: a bad label, found while sorting) leaves the
+        # old file as it was, and no temporary file behind.
+        write_data(self.path, [("3.1.23.1", 1, [1, 0, -1, 1])])
+        with open(self.path) as fh:
+            before = fh.read()
+        with self.assertRaises(ValueError):
+            write_data(self.path, [("3.1.23.1", 1, [1, 0, -1, 1]), ("3.1.oops.1", -1, None)])
+        with open(self.path) as fh:
+            self.assertEqual(fh.read(), before)
+        self.assertEqual(sorted(os.listdir(self.tmp.name)), ["degree3.txt"])
+
+    def test_parallel_merges_keep_every_row(self):
+        # Four processes merge 25 batches of rows each into the same file at the same
+        # time, as find_generators.py --shard i/4 does. With the lock, no row is lost.
+        script = """
+import sys
+sys.path.insert(0, %r)
+from monogenic import merge_data
+path, k = sys.argv[1], int(sys.argv[2])
+for b in range(25):
+    label = "3.1.%%d.1" %% (1000 * k + b + 1)
+    merge_data(path, {label: (label, -1, None)}, source="test", log=%r)
+""" % (os.path.dirname(monogenic.__file__), self.log)
+        write_data(self.path, [])
+        procs = [subprocess.Popen([sys.executable, "-c", script, self.path, str(k)]) for k in range(4)]
+        self.assertEqual([p.wait() for p in procs], [0] * 4)
+        rows = read_data(self.path)
+        self.assertEqual(len(rows), 100)
+        self.assertEqual(sorted(row[0] for row in rows),
+                         sorted("3.1.%d.1" % (1000 * k + b + 1) for k in range(4) for b in range(25)))
+
+    def test_generate_quadratic_keeps_rows(self):
+        # generate_quadratic.py merges: rows outside its range stay, rows in it are added.
+        import generate_quadratic
+        path = os.path.join(self.tmp.name, "degree2.txt")
+        big = ("2.2.1000005.1", 1, [-250001, -1, 1])
+        write_data(path, [("2.0.3.1", 1, [1, -1, 1]), big])
+        saved = sys.argv, monogenic.DATA_DIR, monogenic.CONFLICT_LOG
+        try:
+            sys.argv = ["generate_quadratic.py", "--max-disc", "20"]
+            monogenic.DATA_DIR, monogenic.CONFLICT_LOG = self.tmp.name, self.log
+            with contextlib.redirect_stdout(io.StringIO()) as out:
+                generate_quadratic.main()
+        finally:
+            sys.argv, monogenic.DATA_DIR, monogenic.CONFLICT_LOG = saved
+        rows = read_data(path)
+        self.assertIn(big, rows)
+        self.assertEqual([row[0] for row in rows],
+                         ["2.0.3.1", "2.0.4.1", "2.2.5.1", "2.0.7.1", "2.0.8.1", "2.2.8.1", "2.0.11.1",
+                          "2.2.12.1", "2.2.13.1", "2.0.15.1", "2.2.17.1", "2.0.19.1", "2.0.20.1",
+                          "2.2.1000005.1"])
+        self.assertIn("13 quadratic fields: 12 added, 0 replaced, 1 kept", out.getvalue())
         self.assertEqual(self.logged(), [])
 
     def merge23(self, stored, new, replace=False):

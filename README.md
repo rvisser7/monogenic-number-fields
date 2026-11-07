@@ -135,7 +135,7 @@ no generator for a field marked -1, and none smaller than the stored one for a f
 | Degree | Status |
 |---|---|
 | all | polredabs roots that generate $\mathcal{O}_K$, from `--method polredabs` |
-| 2 | done for $\lvert D \rvert \le 1000$ (`generate_quadratic.py`): every quadratic field is monogenic |
+| 2 | every LMFDB quadratic field (`--method polredabs`, or `generate_quadratic.py` for a range of $\lvert D \rvert$): every quadratic field is monogenic |
 | 3 | exact (Magma, or PARI Thue solver) |
 | 4 | exact with Magma, or with PARI (`--method factor`) |
 | $\ge 5$ | PARI brute force for 1, common index divisors and local obstructions for -1 |
@@ -143,7 +143,7 @@ no generator for a field marked -1, and none smaller than the stored one for a f
 ## Scripts
 
 ```
-python3 scripts/generate_quadratic.py --max-disc 1000              # data/degree2.txt
+python3 scripts/generate_quadratic.py --max-disc 1000              # add quadratic fields to data/degree2.txt
 sage -python scripts/find_generators.py --degrees 2-47 --method polredabs   # every field whose polredabs root generates O_K
 sage -python scripts/find_generators.py --degrees 3 --max-disc 10^6  # LMFDB fields, Magma for degree <= 4
 sage -python scripts/find_generators.py --degrees 5 --method pari -B 4
@@ -165,6 +165,10 @@ python3 -m unittest discover tests                                  # run the te
 `sage -pip install -U "lmfdb-lite[pgbinary] @ git+https://github.com/roed314/lmfdb-lite.git"`)
 and merges its results into `data/` every `--batch` fields. Runs can be split with `--shard i/k`
 or discriminant ranges and run in parallel; `--only-new` skips fields that already have a row.
+Each merge locks the data file (through `data/degree<n>.txt.lock`, with `flock`), so parallel
+runs on the same degree take turns instead of dropping each other's rows, and the file is
+rewritten atomically (a temporary file replaces it), so an interrupted run never leaves a
+truncated file.
 
 ### Which generator is kept
 

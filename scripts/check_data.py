@@ -36,7 +36,7 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from monogenic import (DATA_DIR, cubic_generator, factor_generator, find_generator, obstruction, format_data, generator_key, is_smaller, label_disc,
-                       format_coeffs, label_key, pari, parse_coeffs, read_data, write_data)
+                       format_coeffs, label_key, locked, pari, parse_coeffs, read_data, write_data)
 from progress import Progress
 
 
@@ -187,7 +187,8 @@ def main():
         if degrees is not None and int(os.path.basename(path)[len("degree"):-len(".txt")]) not in degrees:
             continue
         if args.fix:
-            write_data(path, read_data(path))
+            with locked(path):
+                write_data(path, read_data(path))
         if args.source == "db":
             fields.update(db_fields([row[0] for row in read_data(path)]))
         count, errors, skipped, unproved = check_file(path, fields, args.cross_check, progress, args.reprove)

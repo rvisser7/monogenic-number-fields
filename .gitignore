@@ -222,3 +222,7 @@ __marimo__/
 # Patch files
 *.patch
 *.diff
+
+# Lock and temporary files of the data files (see scripts/monogenic.py)
+data/*.lock
+data/*.tmp*
