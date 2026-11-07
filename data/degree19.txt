@@ -1,4 +1,4 @@
-label|monogenic|zk_coeffs
+label|monogenic|monogenic_coeffs
 text|smallint|numeric[]
 
 19.1.1939073247585017051548555.1|1|[-1,-1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1]
