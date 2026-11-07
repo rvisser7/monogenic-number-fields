@@ -7,7 +7,8 @@ import unittest
 SCRIPTS = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "scripts")
 sys.path.insert(0, SCRIPTS)
 
-from check_lmfdb_zk import check_zk  # noqa: E402
+from check_lmfdb_zk import check_zk, db_fields  # noqa: E402
+from compare_lmfdb import DiscRange, Log  # noqa: E402
 
 F = [8673, 0, 252, 0, 1]  # 4.0.19982592.7, x^4 + 252x^2 + 8673
 GOOD = ["1", "a", "1/49*a^2 + 18/7", "1/49*a^3 + 25/7*a"]
@@ -47,6 +48,33 @@ class TestCheckZk(unittest.TestCase):
         # a basis of O_K for a field whose discriminant is not the label's
         self.assertIn("disc", kinds(check_zk("3.1.31.1", [-1, -1, 0, 1], ["1", "a", "a^2"])))
         self.assertIn("nfdisc", kinds(check_zk("3.1.31.1", [-1, -1, 0, 1], ["1", "a", "a^2"], nfdisc=True)))
+
+    def test_db_fields(self):
+        # coeffs and index from nf_fields, zk from nf_fields_extra, joined on the label
+        fields = {"4.0.117.1": ([1, 1, -1, -1, 1], 1), "4.0.19982592.7": (F, 1), "3.1.23.1": ([-1, -1, 0, 1], 1)}
+        extra = {"4.0.117.1": ["1", "a", "a^2", "a^3"], "4.0.19982592.7": ["1", "a", "a^2", "a^3"]}
+        queries = []
+
+        class NF:
+            def count(self, query):
+                return sum(1 for label in fields if int(label[0]) == query["degree"])
+
+            def search(self, query, cols):
+                for label, (coeffs, index) in sorted(fields.items()):
+                    if int(label[0]) == query["degree"]:
+                        yield {"label": label, "coeffs": coeffs, "index": index}
+
+        class Extra:
+            def search(self, query, cols):
+                queries.append(query["label"]["$in"])
+                return [{"label": label, "zk": extra[label]} for label in query["label"]["$in"] if label in extra]
+
+        db = type("DB", (), {"nf_fields": NF(), "nf_fields_extra": Extra()})()
+        rows = list(db_fields(4, DiscRange(), Log(quiet=True), (0, 1), batch=1, db=db))
+        self.assertEqual([(r[0], r[2]) for r in rows], [("4.0.117.1", extra["4.0.117.1"]),
+                                                       ("4.0.19982592.7", extra["4.0.19982592.7"])])
+        self.assertEqual(queries, [["4.0.117.1"], ["4.0.19982592.7"]])
+        self.assertEqual([kinds(check_zk(*r)) for r in rows], [[], ["disc", "index"]])
 
     def test_script(self):
         rows = ['label|coeffs|zk|index',

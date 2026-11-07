@@ -19,7 +19,8 @@ then disc(f) = 2401^2 * 19982592, so that basis has index 2401 in O_K (it misses
 (a^2 + 126)/49 = sqrt(3)).
 
 Fields come from the LMFDB database (`from lmfdb import db`, or lmfdb-lite, as in
-find_generators.py), or from a file (--input) with lines
+find_generators.py): coeffs and index from nf_fields, zk from nf_fields_extra (joined on
+the label, --batch labels per query). Or they come from a file (--input) with lines
     label|[coeffs]|zk|index
 where zk is a JSON list of strings in a, e.g.
     4.0.19982592.7|[8673,0,252,0,1]|["1","a","1/49*a^2 + 18/7","1/49*a^3 + 25/7*a"]|2401
@@ -107,17 +108,38 @@ def check_zk(label, coeffs, zk, index=None, nfdisc=False):
     return out
 
 
-def db_fields(n, disc, log, shard):
+def get_db():
     try:
         from lmfdb import db
     except ImportError:
         from lmf import db
+    return db
+
+
+def db_fields(n, disc, log, shard, batch=10000, db=None):
+    """(label, coeffs, zk, index) for the LMFDB fields of degree n: coeffs and index from
+    nf_fields, zk from nf_fields_extra (same label), fetched `batch` labels at a time."""
+    db = db or get_db()
     query = dict(degree=n, **disc.query())
     total = db.nf_fields.count(query)
     log.say("degree %d: %d LMFDB fields%s" % (n, total, disc))
-    for i, r in enumerate(db.nf_fields.search(query, ["label", "coeffs", "zk", "index"])):
-        if i % shard[1] == shard[0]:
-            yield r["label"], [int(c) for c in r["coeffs"]], r.get("zk"), r.get("index")
+    rows = []
+
+    def flush():
+        zk = {r["label"]: r.get("zk") for r in
+              db.nf_fields_extra.search({"label": {"$in": [r[0] for r in rows]}}, ["label", "zk"])}
+        out = [(label, coeffs, zk.get(label), index) for label, coeffs, index in rows]
+        rows.clear()
+        return out
+
+    for i, r in enumerate(db.nf_fields.search(query, ["label", "coeffs", "index"])):
+        if i % shard[1] != shard[0]:
+            continue
+        rows.append((r["label"], [int(c) for c in r["coeffs"]], r.get("index")))
+        if len(rows) >= batch:
+            yield from flush()
+    if rows:
+        yield from flush()
 
 
 def file_fields(path, degrees, disc, shard):
@@ -153,6 +175,8 @@ def main():
     parser.add_argument("--nfdisc", action="store_true",
                         help="also check the label's discriminant with PARI's nfdisc (slow)")
     parser.add_argument("--shard", default="0/1", help="i/k: only every k-th field, from the i-th")
+    parser.add_argument("--batch", type=int, default=10000,
+                        help="labels per nf_fields_extra query (default 10000)")
     parser.add_argument("--show", type=int, default=20, metavar="N",
                         help="print at most N problems per degree (default 20)")
     parser.add_argument("--write", metavar="FILE", help="write every problem to FILE (label|kind|message)")
@@ -170,7 +194,7 @@ def main():
     out = open(args.write, "w") if args.write else None
     any_problem = False
     for n in (sorted(from_file) if from_file is not None else degrees):
-        rows = from_file[n] if from_file is not None else db_fields(n, disc, log, shard)
+        rows = from_file[n] if from_file is not None else db_fields(n, disc, log, shard, args.batch)
         checked, kinds, bad, shown = 0, Counter(), 0, 0
         for label, coeffs, zk, index in rows:
             checked += 1

@@ -234,8 +234,8 @@ replaces the -1 as above (add `--only-new` to leave those fields out).
 
 ### Checking the LMFDB integral bases
 
-`scripts/check_lmfdb_zk.py` checks the integral basis `zk` and the `index` column of each
-`nf_fields` row. For the LMFDB polynomial $f$ and $D$ the discriminant in the label, the stored
+`scripts/check_lmfdb_zk.py` checks the integral basis `zk` (in `nf_fields_extra`) and the
+`index` column (in `nf_fields`) of each LMFDB field. For the LMFDB polynomial $f$ and $D$ the discriminant in the label, the stored
 $b_1, \dots, b_n$ (polynomials in $a$) are a basis of $\mathcal{O}_K$ iff they are linearly
 independent algebraic integers (each characteristic polynomial is in $\mathbb{Z}[x]$) spanning a
 lattice of discriminant $\det(B)^2 \operatorname{disc}(f) = D$; and `index` must be
