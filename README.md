@@ -14,7 +14,7 @@ The data lives in [`data/`](data/), with one file per degree: `degree2.txt`, `de
 Each file is in psycodict upload format:
 
 ```
-label|monogenic|zk_coeffs
+label|monogenic|monogenic_coeffs
 text|smallint|numeric[]
 
 2.0.3.1|1|[1,-1,1]
@@ -24,13 +24,13 @@ text|smallint|numeric[]
 * `monogenic` is 1 if $\mathcal{O}_K$ is monogenic, -1 if it provably is not, and 0 if this has not
   been computed. A field only appears in a file once this is decided, so fields missing from a
   file have `monogenic = 0`.
-* `zk_coeffs` are the coefficients (constant term first, as in `nf_fields.coeffs`) of the minimal
+* `monogenic_coeffs` are the coefficients (constant term first, as in `nf_fields.coeffs`) of the minimal
   polynomial of a generator $\alpha$, or `\N` (null) when `monogenic` is not 1.
 
 Since $\alpha$ is only determined up to $\alpha \mapsto \pm\alpha + k$ and a choice of class,
 the stored $\alpha$ is:
 
-1. the root of the polredabs polynomial, if it generates $\mathcal{O}_K$ (so `zk_coeffs = coeffs`);
+1. the root of the polredabs polynomial, if it generates $\mathcal{O}_K$ (so `monogenic_coeffs = coeffs`);
 2. otherwise, the generator whose minimal polynomial $P$ comes first in the order polredabs uses:
    smallest $T_2(P) = \sum_i |\alpha_i|^2$ (over all $n$ roots), then smallest $S(P)$ in
    lexicographic order, where $S(P) = (|a_1|, a_1, \dots, |a_n|, a_n)$ for
@@ -207,7 +207,7 @@ The LMFDB table `nf_fields` has its own `monogenic` column, with the same values
 also null, treated as 0). `scripts/compare_lmfdb.py` compares it with `data/` and prints, for each
 degree, how many fields each side marks 1 and -1, how many agree, and
 
-* **conflicts**: one side says 1 and the other -1. If ours is 1, the stored `zk_coeffs` (checked by
+* **conflicts**: one side says 1 and the other -1. If ours is 1, the stored `monogenic_coeffs` (checked by
   `check_data.py`) is a generator, so the LMFDB value is wrong; if ours is -1, one of the proofs
   needs a second look. The script exits with status 1 if there are any;
 * fields where only we know the answer (an update for the LMFDB), and fields where only the LMFDB

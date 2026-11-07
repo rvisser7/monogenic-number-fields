@@ -8,7 +8,7 @@ file with one `label|coeffs` line per field, e.g. `3.1.244.1|[-6,1,0,1]`. Degree
 Methods:
   * polredabs: the quick bulk pass. Keeps exactly the fields where the root of the
     LMFDB (polredabs) polynomial f already generates O_K, i.e. disc(f) = disc(K), and
-    writes them with zk_coeffs = f, which is the canonical generator (see README). This
+    writes them with monogenic_coeffs = f, which is the canonical generator (see README). This
     costs one polynomial discriminant per field, so a whole degree takes about as long as
     reading it from the LMFDB. With --lmfdb-index only the fields whose LMFDB `index`
     column is 1 are read (faster still; each is still checked). Other fields are left

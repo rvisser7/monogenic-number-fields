@@ -473,6 +473,24 @@ class TestData(unittest.TestCase):
         rows = read_data(os.path.join(DATA_DIR, "degree2.txt"))
         self.assertEqual(rows[:2], [("2.0.3.1", 1, [1, -1, 1]), ("2.0.4.1", 1, [1, 0, 1])])
 
+    def test_header(self):
+        import glob
+        for path in glob.glob(os.path.join(DATA_DIR, "degree*.txt")):
+            with self.subTest(path=os.path.basename(path)), open(path) as fh:
+                self.assertEqual(fh.readline(), "label|monogenic|monogenic_coeffs\n")
+
+    def test_old_header(self):
+        # Files with the old column name zk_coeffs are still read, and written with the new one.
+        with tempfile.TemporaryDirectory() as tmp:
+            path = os.path.join(tmp, "degree2.txt")
+            with open(path, "w") as fh:
+                fh.write("label|monogenic|zk_coeffs\ntext|smallint|numeric[]\n\n2.0.3.1|1|[1,-1,1]\n")
+            rows = read_data(path)
+            self.assertEqual(rows, [("2.0.3.1", 1, [1, -1, 1])])
+            write_data(path, rows)
+            with open(path) as fh:
+                self.assertEqual(fh.readline(), "label|monogenic|monogenic_coeffs\n")
+
     def test_format(self):
         self.assertEqual(format_coeffs([1, 0, -1, 1]), "[1,0,-1,1]")
         self.assertEqual(parse_coeffs("[1,0,-1,1]"), [1, 0, -1, 1])

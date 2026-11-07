@@ -7,7 +7,7 @@ summary). A field missing from our data files counts as 0.
 
 For each degree this prints a summary line, and then lists
   * conflicts: ours 1 and LMFDB -1, or ours -1 and LMFDB 1. One of the two is wrong. For
-    ours 1 the stored zk_coeffs is a generator that check_data.py verifies, so it is a
+    ours 1 the stored monogenic_coeffs is a generator that check_data.py verifies, so it is a
     certificate that the LMFDB value is wrong;
   * fields where only we know the answer (ours 1 or -1, LMFDB 0 or null), which the
     LMFDB could take from us;
@@ -33,7 +33,7 @@ reading or counting, the number of LMFDB rows read so far every --progress-every
 (default 10), and a one-line result as each degree finishes. --quiet leaves them out.
 
 Files written by --write DIR, with all degrees together:
-  conflicts.txt          label|ours|lmfdb|zk_coeffs (ours)
+  conflicts.txt          label|ours|lmfdb|monogenic_coeffs (ours)
   ours_only.txt          label|monogenic, for the fields only we know: an LMFDB update
   lmfdb_only_yes.txt     label|[coeffs] (the LMFDB polynomial), LMFDB 1 and ours 0: input
                          for find_generators.py --input
@@ -195,7 +195,7 @@ class FileSource:
 
 
 def compare(ours, known):
-    """Compare {label: (monogenic, zk_coeffs)} (ours) with {label: (monogenic, coeffs)}
+    """Compare {label: (monogenic, monogenic_coeffs)} (ours) with {label: (monogenic, coeffs)}
     (the LMFDB fields with monogenic not 0 or null). Returns a dict of lists of labels:
     agree_yes, agree_no, conflict, ours_only_yes, ours_only_no, lmfdb_only_yes,
     lmfdb_only_no, unexpected."""

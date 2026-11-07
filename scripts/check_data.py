@@ -1,6 +1,6 @@
 """Validate every data/degree<n>.txt.
 
-For each row with monogenic = 1, with f the polynomial zk_coeffs and alpha its root,
+For each row with monogenic = 1, with f the polynomial monogenic_coeffs and alpha its root,
 this checks that
   * f is monic and irreducible of degree n;
   * [O_L : Z[alpha]] = 1, where L = Q(alpha) and O_L is computed independently by PARI
@@ -9,8 +9,8 @@ this checks that
   * with --source db or --fields: L is the field with that label, by comparing
     polredabs(f) with the LMFDB polynomial (falling back to nfisisom). The
     discriminant alone does not decide this, e.g. 4.0.1040.1 and 4.0.1040.2. If the
-    root of the LMFDB polynomial generates O_K, zk_coeffs must be that polynomial.
-Rows with monogenic = -1 (not monogenic) or 0 (not computed) must have a null zk_coeffs.
+    root of the LMFDB polynomial generates O_K, monogenic_coeffs must be that polynomial.
+Rows with monogenic = -1 (not monogenic) or 0 (not computed) must have a null monogenic_coeffs.
 
 With --cross-check B the PARI brute-force search (height <= B) is run on each field as an
 independent check of the Magma results: it must find no generator for a field marked -1,
@@ -72,15 +72,15 @@ def check_generator(label, n, coeffs, lmfdb_coeffs):
     if index != 1:
         errors.append("%s: Z[alpha] has index %s in the ring of integers" % (label, index))
     if D != label_disc(label):
-        errors.append("%s: zk_coeffs defines a field of discriminant %s, expected %s"
+        errors.append("%s: monogenic_coeffs defines a field of discriminant %s, expected %s"
                       % (label, D, label_disc(label)))
     if lmfdb_coeffs is None:
         return errors
     g = pari.Polrev(lmfdb_coeffs)
     if pari.polredabs(f) != g and not pari.nfisisom(f, g):
-        errors.append("%s: zk_coeffs defines a different field from the LMFDB polynomial" % label)
+        errors.append("%s: monogenic_coeffs defines a different field from the LMFDB polynomial" % label)
     elif pari.poldisc(g) == D and coeffs != lmfdb_coeffs:
-        errors.append("%s: the root of the LMFDB polynomial generates O_K, so zk_coeffs should be %s"
+        errors.append("%s: the root of the LMFDB polynomial generates O_K, so monogenic_coeffs should be %s"
                       % (label, format_coeffs(lmfdb_coeffs)))
     return errors
 
@@ -125,7 +125,7 @@ def check_file(path, fields, cross_bound, progress, do_reprove=False):
     rows = read_data(path)
     with open(path) as fh:
         if fh.read() != format_data(rows):
-            errors.append("not in the standard format (sorted, no spaces in zk_coeffs); "
+            errors.append("not in the standard format (header, sorted, no spaces in monogenic_coeffs); "
                           "rewrite it with --fix")
     labels = [row[0] for row in rows]
     if labels != sorted(labels, key=label_key) or len(set(labels)) != len(labels):
@@ -137,9 +137,9 @@ def check_file(path, fields, cross_bound, progress, do_reprove=False):
             errors.append("%s: wrong degree file" % label)
         elif mono in (-1, 0):
             if coeffs is not None:
-                errors.append("%s: monogenic = %d but zk_coeffs given" % (label, mono))
+                errors.append("%s: monogenic = %d but monogenic_coeffs given" % (label, mono))
         elif mono != 1 or coeffs is None:
-            errors.append("%s: monogenic must be 1, -1 or 0, with zk_coeffs iff 1" % label)
+            errors.append("%s: monogenic must be 1, -1 or 0, with monogenic_coeffs iff 1" % label)
         else:
             errors += check_generator(label, n, coeffs, fields.get(label))
         if (cross_bound or do_reprove) and mono == -1 and label not in fields:
@@ -149,7 +149,7 @@ def check_file(path, fields, cross_bound, progress, do_reprove=False):
             errors += errs
             unproved += mono == -1 and not proved and not errs
         if cross_bound and mono != 0:
-            # the polredabs polynomial if we have it; otherwise zk_coeffs defines the field
+            # the polredabs polynomial if we have it; otherwise monogenic_coeffs defines the field
             field_coeffs = fields.get(label, coeffs)
             if field_coeffs is not None:
                 errors += cross_check(label, mono, coeffs, field_coeffs, cross_bound)

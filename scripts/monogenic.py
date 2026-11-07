@@ -20,7 +20,10 @@ DATA_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__
 # merge_data appends a line here for every field where a new row says 1 and the stored
 # row says -1, or the other way round (see merge_data).
 CONFLICT_LOG = os.path.join(os.path.dirname(DATA_DIR), "conflicts.txt")
-HEADER = "label|monogenic|zk_coeffs\ntext|smallint|numeric[]\n\n"
+HEADER = "label|monogenic|monogenic_coeffs\ntext|smallint|numeric[]\n\n"
+# The header from before the column was renamed from zk_coeffs to monogenic_coeffs. Files
+# with it are still read, and are written with HEADER (check_data.py --fix rewrites them).
+OLD_HEADER = "label|monogenic|zk_coeffs\ntext|smallint|numeric[]\n\n"
 NULL = r"\N"
 
 
@@ -131,7 +134,7 @@ def read_data(path):
     """Rows (label, monogenic, coeffs or None) of a data file."""
     with open(path) as fh:
         lines = fh.read().split("\n")
-    if "\n".join(lines[:3]) + "\n" != HEADER:
+    if "\n".join(lines[:3]) + "\n" not in (HEADER, OLD_HEADER):
         raise ValueError("%s: bad header" % path)
     rows = []
     for line in lines[3:]:

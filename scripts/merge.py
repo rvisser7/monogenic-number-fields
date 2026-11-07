@@ -1,4 +1,4 @@
-"""Merge rows "label|monogenic|zk_coeffs" (e.g. from magma/monogenic.m run by hand)
+"""Merge rows "label|monogenic|monogenic_coeffs" (e.g. from magma/monogenic.m run by hand)
 into data/degree<n>.txt.
 
     python3 scripts/merge.py rows.txt [more_rows.txt ...] [--replace]
