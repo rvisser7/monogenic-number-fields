@@ -29,21 +29,21 @@ find_generators.py --degrees 7 --method pari -B 2
 find_generators.py --degrees 8 --method pari -B 2
 find_generators.py --degrees 9 --method pari -B 1
 find_generators.py --degrees 10 --method pari -B 1
-find_generators.py --degrees 11 --method pari -B 1
-find_generators.py --degrees 12 --method pari -B 1
-find_generators.py --degrees 13 --method pari -B 1
-find_generators.py --degrees 14 --method pari -B 1
-find_generators.py --degrees 15 --method pari -B 1
-find_generators.py --degrees 16 --method pari -B 1
-find_generators.py --degrees 17 --method pari -B 1
-find_generators.py --degrees 18 --method pari -B 1
-find_generators.py --degrees 19 --method pari -B 1
-find_generators.py --degrees 20 --method pari -B 1
-find_generators.py --degrees 21 --method pari -B 1
-find_generators.py --degrees 22 --method pari -B 1
-find_generators.py --degrees 23 --method pari -B 1
-find_generators.py --degrees 24 --method pari -B 1
-find_generators.py --degrees 25 --method pari -B 1
+find_generators.py --degrees 11 --method pari -B 1 --batch 50
+find_generators.py --degrees 12 --method pari -B 1 --batch 20
+find_generators.py --degrees 13 --method pari -B 1 --batch 10
+find_generators.py --degrees 14 --method pari -B 1 --batch 1
+find_generators.py --degrees 15 --method pari -B 1 --batch 1
+find_generators.py --degrees 16 --method pari -B 1 --batch 1
+find_generators.py --degrees 17 --method pari -B 1 --batch 1
+find_generators.py --degrees 18 --method pari -B 1 --batch 1
+find_generators.py --degrees 19 --method pari -B 1 --batch 1
+find_generators.py --degrees 20 --method pari -B 1 --batch 1
+find_generators.py --degrees 21 --method pari -B 1 --batch 1
+find_generators.py --degrees 22 --method pari -B 1 --batch 1
+find_generators.py --degrees 23 --method pari -B 1 --batch 1
+find_generators.py --degrees 24 --method pari -B 1 --batch 1
+find_generators.py --degrees 25 --method pari -B 1 --batch 1
 
 
 # Exact methods for degrees 3 and 4 (no Magma needed):
