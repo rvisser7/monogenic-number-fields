@@ -14,12 +14,37 @@
 #   degree 12: B=1 11 s
 # Fields where a generator is found at a lower height stop there, so most are faster.
 # When the search finds nothing, the local tests (--method local) are tried as well.
-find_generators.py --degrees 5 --method pari -B 4 --only-new
-find_generators.py --degrees 6 --method pari -B 3 --only-new
-find_generators.py --degrees 7 --method pari -B 2 --only-new
-find_generators.py --degrees 8 --method pari -B 2 --only-new
-find_generators.py --degrees 9 --method pari -B 1 --only-new
-find_generators.py --degrees 10 --method pari -B 1 --only-new
+#find_generators.py --degrees 5 --method pari -B 4 --only-new
+#find_generators.py --degrees 6 --method pari -B 3 --only-new
+#find_generators.py --degrees 7 --method pari -B 2 --only-new
+#find_generators.py --degrees 8 --method pari -B 2 --only-new
+#find_generators.py --degrees 9 --method pari -B 1 --only-new
+#find_generators.py --degrees 10 --method pari -B 1 --only-new
+
+
+# Runs which go through all fields again!  (degrees beyond 10 will be very slow, so only the first few are found...)
+
+find_generators.py --degrees 6 --method pari -B 3
+find_generators.py --degrees 7 --method pari -B 2
+find_generators.py --degrees 8 --method pari -B 2
+find_generators.py --degrees 9 --method pari -B 1
+find_generators.py --degrees 10 --method pari -B 1
+find_generators.py --degrees 11 --method pari -B 1
+find_generators.py --degrees 12 --method pari -B 1
+find_generators.py --degrees 13 --method pari -B 1
+find_generators.py --degrees 14 --method pari -B 1
+find_generators.py --degrees 15 --method pari -B 1
+find_generators.py --degrees 16 --method pari -B 1
+find_generators.py --degrees 17 --method pari -B 1
+find_generators.py --degrees 18 --method pari -B 1
+find_generators.py --degrees 19 --method pari -B 1
+find_generators.py --degrees 20 --method pari -B 1
+find_generators.py --degrees 21 --method pari -B 1
+find_generators.py --degrees 22 --method pari -B 1
+find_generators.py --degrees 23 --method pari -B 1
+find_generators.py --degrees 24 --method pari -B 1
+find_generators.py --degrees 25 --method pari -B 1
+
 
 # Exact methods for degrees 3 and 4 (no Magma needed):
 # find_generators.py --degrees 3 --method thue --only-new
