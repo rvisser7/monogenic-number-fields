@@ -1,0 +1,31 @@
+# Jobs for scripts/run_jobs.py: one per line, a script in scripts/ and its arguments.
+#     sage -python scripts/run_jobs.py jobs.txt --parallel 4
+#
+# PARI brute-force search (--method pari) on the fields with no row yet, with a bound -B
+# that gets smaller as the degree goes up. The search tries up to about (2B+1)^(n-1)/2
+# elements per field, all of them when the field has no generator up to height B. Time
+# per such field, measured on one field of each degree:
+#   degree 5:  B=3 0.02 s, B=4 0.05 s, B=5 0.12 s
+#   degree 6:  B=2 0.04 s, B=3 0.20 s, B=4 0.66 s
+#   degree 7:  B=2 0.22 s, B=3 1.9 s
+#   degree 8:  B=1 0.08 s, B=2 2.0 s
+#   degree 9:  B=1 0.20 s, B=2 13 s
+#   degree 10: B=1 0.79 s, B=2 81 s
+#   degree 12: B=1 11 s
+# Fields where a generator is found at a lower height stop there, so most are faster.
+# When the search finds nothing, the local tests (--method local) are tried as well.
+find_generators.py --degrees 5 --method pari -B 4 --only-new
+find_generators.py --degrees 6 --method pari -B 3 --only-new
+find_generators.py --degrees 7 --method pari -B 2 --only-new
+find_generators.py --degrees 8 --method pari -B 2 --only-new
+find_generators.py --degrees 9 --method pari -B 1 --only-new
+find_generators.py --degrees 10 --method pari -B 1 --only-new
+
+# Exact methods for degrees 3 and 4 (no Magma needed):
+# find_generators.py --degrees 3 --method thue --only-new
+# find_generators.py --degrees 4 --method factor --only-new
+
+# A big degree can be split into several jobs, by discriminant or with --shard (merges
+# into the same data file are locked, so this is safe):
+# find_generators.py --degrees 6 --method pari -B 3 --only-new --shard 0/2
+# find_generators.py --degrees 6 --method pari -B 3 --only-new --shard 1/2
