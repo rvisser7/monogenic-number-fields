@@ -226,3 +226,6 @@ __marimo__/
 # Lock and temporary files of the data files (see scripts/monogenic.py)
 data/*.lock
 data/*.tmp*
+
+# Logs of scripts/run_jobs.py
+logs/

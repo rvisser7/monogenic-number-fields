@@ -154,6 +154,7 @@ sage -python scripts/find_generators.py --degrees 3 --method thue --max-disc 10^
 sage -python scripts/find_generators.py --degrees 5-8 --method local --only-new  # prove the rest are not monogenic
 sage -python scripts/find_generators.py --degrees 4 --method factor --only-new   # exact, no Magma
 sage -python scripts/find_generators.py --degrees 6 --method pari --lmfdb-monogenic -B 4  # LMFDB says monogenic, no generator here yet
+sage -python scripts/run_jobs.py jobs.txt --parallel 4               # run the jobs in jobs.txt in parallel (see below)
 python3 scripts/merge.py rows.txt [--replace]                       # merge rows from a manual Magma run
 python3 scripts/check_data.py [--fix]                               # validate every data/degree<n>.txt
 sage -python scripts/check_data.py --source db --cross-check 2      # also against the LMFDB and the PARI search
@@ -172,6 +173,13 @@ Each merge locks the data file (through `data/degree<n>.txt.lock`, with `flock`)
 runs on the same degree take turns instead of dropping each other's rows, and the file is
 rewritten atomically (a temporary file replaces it), so an interrupted run never leaves a
 truncated file.
+
+To run several jobs at once, e.g. the search in each degree with its own bound, list them in a
+jobs file, one per line (a script in `scripts/` and its arguments; `#` starts a comment), and
+run `scripts/run_jobs.py jobs.txt --parallel 4`. At most `--parallel` jobs run at a time, each
+writes its output to `logs/<n>-<script>-d<degrees>.log`, and a line is printed when each starts
+and finishes. `jobs.txt` is an example, with timings for choosing `-B` in each degree;
+`--dry-run` lists the jobs and their logs without running them.
 
 ### Which generator is kept
 
