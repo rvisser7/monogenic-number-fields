@@ -54,14 +54,36 @@ def root_generates(coeffs, label):
     return int(pari.poldisc(pari.Polrev(coeffs))) == label_disc(label)
 
 
-def find_generator(coeffs, bound=3):
-    """Ascending coefficients of the minimal polynomial of the canonical generator
-    of O_K, K = Q[x]/(f) with f given by ascending coeffs, or None if the search up
-    to height `bound` found nothing (which does not prove non-monogenicity)."""
-    res = pari("mono_generator")(pari.nfinit(pari.Polrev(coeffs)), bound)
+def search_generator(coeffs, bound=3, max_points=10**5):
+    """Search for a generator of O_K, K = Q[x]/(f) with f given by ascending coeffs, up to
+    height `bound` on the integral basis, and from the best one found, the canonical
+    generator (mono_canonical in monogenic.gp: every element with T2 at most that of the
+    one found is checked, if there are at most max_points of them).
+    Returns (ascending coefficients of its minimal polynomial, True if it is proved to be
+    the canonical generator), or (None, False) if the search found nothing (which does not
+    prove non-monogenicity)."""
+    res = pari("mono_generator")(pari.nfinit(pari.Polrev(coeffs)), bound, max_points)
     if res == 0:
-        return None
-    return [int(c) for c in pari.Vecrev(res)]
+        return None, False
+    return [int(c) for c in pari.Vecrev(res[0])], bool(res[1])
+
+
+def find_generator(coeffs, bound=3, max_points=10**5):
+    """The generator from search_generator (canonical unless more than max_points elements
+    had to be checked), or None if the search up to height `bound` found nothing."""
+    return search_generator(coeffs, bound, max_points)[0]
+
+
+def canonical_generator(gen, max_points=10**5):
+    """For gen (ascending coefficients of the minimal polynomial of a generator alpha of
+    O_K, K = Q(alpha)), the canonical generator of O_K and whether that is proved: every
+    element with T2 at most T2(alpha) is checked (mono_canonical in monogenic.gp), unless
+    there are more than max_points of them. Returns (coeffs, proved)."""
+    f = pari.Polrev(gen)
+    if pari.polredabs(f) == f:
+        return list(gen), True  # the root of the polredabs polynomial comes first
+    res = pari("mono_canonical")(pari.nfinit(f), pari.Mod(pari("x"), f), max_points)
+    return [int(c) for c in pari.Vecrev(res[0])], bool(res[1])
 
 
 def cubic_generator(coeffs):

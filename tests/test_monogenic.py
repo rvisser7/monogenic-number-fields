@@ -9,7 +9,7 @@ import unittest
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "scripts"))
 
 import monogenic  # noqa: E402
-from monogenic import (DATA_DIR, cubic_generator, factor_generator, find_generator, format_coeffs,  # noqa: E402
+from monogenic import (DATA_DIR, canonical_generator, cubic_generator, search_generator, factor_generator, find_generator, format_coeffs,  # noqa: E402
                        label_disc,
                        merge_data, obstruction, parse_coeffs, pari, read_data, root_generates,
                        verify_generator, write_data)
@@ -199,6 +199,77 @@ class TestCheckData(unittest.TestCase):
         self.assertEqual(reprove("4.0.1197.2", 4, -1, None, [9, 3, -5, -1, 1]), ([], True))
         self.assertIn("no solutions", reprove("4.0.1197.2", 4, 1, [9, 3, -5, -1, 1], [9, 3, -5, -1, 1])[0][0])
         self.assertEqual(reprove("4.0.1040.2", 4, 1, [2, 6, 3, -2, 1], [4, -4, 1, 0, 1]), ([], True))
+
+
+class TestCanonical(unittest.TestCase):
+    """Every element with T2 at most that of a known generator is checked (mono_canonical)."""
+    # Stored generators that were not canonical (found by the search, which stops at the
+    # first height with a generator), and the canonical ones.
+    IMPROVED = {
+        "4.2.214843.1": ([69, -46, 4, -1, 1], [39, 7, -14, -2, 1]),
+        "5.3.6802267.1": ([-2348, 795, 141, -56, -2, 1], [-83, -191, -156, -49, -2, 1]),
+        "6.2.23284160.1": ([69, 170, 92, -18, -19, 0, 1], [1, 12, 41, 26, -16, -2, 1]),
+        "7.1.2452531.1": ([1, 0, -3, 1, -2, 4, -1, 1], [-1, -1, -4, -2, -1, -3, 0, 1]),
+    }
+
+    def test_improved(self):
+        for label, (old, new) in self.IMPROVED.items():
+            with self.subTest(label=label):
+                self.assertEqual(canonical_generator(old), (new, True))
+                self.assertEqual(canonical_generator(new), (new, True))
+                self.assertTrue(verify_generator(new, label))
+                self.assertTrue(monogenic.more_canonical(new, old))
+
+    def test_agrees_with_factor(self):
+        # For quartic fields --method factor finds every generator, so it gives the
+        # canonical one too.
+        f = [int(c) for c in pari.Vecrev(pari.polredabs(pari.Polrev(self.IMPROVED["4.2.214843.1"][0])))]
+        self.assertEqual(factor_generator(f), (True, self.IMPROVED["4.2.214843.1"][1]))
+
+    def test_polredabs_root(self):
+        self.assertEqual(canonical_generator([1, 0, -1, 1]), ([1, 0, -1, 1], True))
+        # a root generating O_K that is not polredabs: the polredabs root comes first
+        self.assertEqual(canonical_generator([1, 1, 0, 1]), ([-1, 1, 0, 1], True))
+        self.assertEqual(search_generator([1, 1, 0, 1]), ([-1, 1, 0, 1], True))
+
+    def test_search_is_proved(self):
+        for label, coeffs in ISSUE_EXAMPLES.items():
+            with self.subTest(label=label):
+                gen, proved = search_generator(coeffs)
+                self.assertTrue(proved)
+                self.assertEqual(canonical_generator(gen), (gen, True))
+
+    def test_max_points(self):
+        old, new = self.IMPROVED["5.3.6802267.1"]
+        self.assertEqual(canonical_generator(old, max_points=10), (old, False))
+
+    def test_canonicalize_script(self):
+        import canonicalize
+        import check_data
+        from progress import Progress
+        with tempfile.TemporaryDirectory() as tmp:
+            path = os.path.join(tmp, "degree4.txt")
+            old, new = self.IMPROVED["4.2.214843.1"]
+            rows = [("4.0.117.1", 1, [1, 1, -1, -1, 1]), ("4.2.214843.1", 1, old)]
+            write_data(path, rows)
+            log = os.path.join(tmp, "conflicts.txt")
+            with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
+                errors = check_data.check_file(path, {}, None, Progress(), canonical_points=10**5)[1]
+            self.assertEqual(len(errors), 1, errors)
+            self.assertIn("4.2.214843.1: not the canonical generator: [39,7,-14,-2,1] comes first", errors[0])
+            saved = sys.argv, monogenic.DATA_DIR, monogenic.CONFLICT_LOG
+            try:
+                sys.argv = ["canonicalize.py", "--degrees", "4"]
+                monogenic.DATA_DIR, monogenic.CONFLICT_LOG = tmp, log
+                with contextlib.redirect_stdout(io.StringIO()) as out, \
+                        contextlib.redirect_stderr(io.StringIO()) as err:
+                    canonicalize.main()
+            finally:
+                sys.argv, monogenic.DATA_DIR, monogenic.CONFLICT_LOG = saved
+            self.assertEqual(read_data(path), [rows[0], ("4.2.214843.1", 1, new)])
+            self.assertIn("2 generators: 1 polredabs roots, 0 proved canonical, 1 replaced", out.getvalue())
+            self.assertIn("BETTER 4.2.214843.1", err.getvalue())
+            self.assertFalse(os.path.exists(log))
 
 
 class TestMerge(unittest.TestCase):
@@ -419,7 +490,7 @@ for b in range(25):
         import types
         import find_generators
 
-        lmfdb = [("3.1.23.1", 1, [1, 0, -1, 1]), ("3.1.31.1", 1, [1, 1, 0, 1]), ("3.1.44.1", 0, [-1, 1, -1, 1]),
+        lmfdb = [("3.1.23.1", 1, [1, 0, -1, 1]), ("3.1.31.1", 1, [-1, 1, 0, 1]), ("3.1.44.1", 0, [-1, 1, -1, 1]),
                  ("3.1.244.1", 1, [-6, 1, 0, 1]), ("3.1.503.1", -1, [8, 2, -1, 1])]
 
         class Table:
@@ -459,12 +530,12 @@ for b in range(25):
 
         out = run()
         self.assertIn("2 fields checked", out)
-        self.assertEqual(read_data(self.path), [("3.1.23.1", 1, [1, 0, -1, 1]), ("3.1.31.1", 1, [1, 1, 0, 1]),
+        self.assertEqual(read_data(self.path), [("3.1.23.1", 1, [1, 0, -1, 1]), ("3.1.31.1", 1, [-1, 1, 0, 1]),
                                                 ("3.1.244.1", 1, self.GEN)])
         self.assertEqual(len(self.logged()), 1)  # the conflict for 3.1.244.1
         out = run("--only-new")
         self.assertIn("1 fields checked", out)
-        self.assertEqual(read_data(self.path), [("3.1.23.1", 1, [1, 0, -1, 1]), ("3.1.31.1", 1, [1, 1, 0, 1]),
+        self.assertEqual(read_data(self.path), [("3.1.23.1", 1, [1, 0, -1, 1]), ("3.1.31.1", 1, [-1, 1, 0, 1]),
                                                 ("3.1.244.1", -1, None)])
 
 

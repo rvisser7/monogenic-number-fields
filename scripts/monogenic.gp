@@ -25,7 +25,14 @@ mono_S(P) = my(v = Vec(P)); concat(vector(#v - 1, i, [abs(v[i + 1]), v[i + 1]]))
 
 \\ Sort key, from the minimal polynomial g of alpha: T2(g) = sum |root|^2 over all
 \\ n roots (rounded, to compare floats safely), then S(g).
-mono_polkey(g) = concat([round(norml2(polroots(g)) * 10^6)], mono_S(g));
+\\ The precision grows with the coefficients (roots up to about 2^e), so that
+\\ generators with huge coefficients get an exact rounded T2 too.
+mono_polkey(g) =
+{
+  my(e = vecmax(apply(c -> if (c, exponent(c), 0), Vec(g))));
+  localbitprec(256 + 4 * e);
+  concat([round(norml2(polroots(g)) * 10^6)], mono_S(g));
+}
 
 \\ The same key for alpha in nf. (Not from nfeltembed, which gives one embedding
 \\ per pair of complex ones, so would count those once instead of twice.)
@@ -43,14 +50,56 @@ mono_normalize(nf, a) =
   best;
 }
 
+\\ The T2 form on O_K modulo Z: Q(x) = T2(a) - Tr(a)^2 / n for a = sum_{i>=2} x_i zk[i],
+\\ which is the smallest T2(a + s) over all real s, as a (real, positive definite)
+\\ Gram matrix in x_2, ..., x_n. (nf.zk[1] = 1, so x_1 only translates a.)
+mono_t2mod1(nf) =
+{
+  my(n = poldegree(nf.pol), G = nf.t2, T);
+  T = vector(n, i, nfelttrace(nf, matid(n)[, i]));
+  G = G - T~ * T / n;
+  G[2..n, 2..n];
+}
+
+\\ Prove that the generator alpha of O_K gives the canonical generator, or find the
+\\ canonical one. If beta generates O_K and T2(beta) <= T2(alpha), then
+\\ Q(beta) <= T2(beta) <= T2(alpha), so beta + k (some k in Z) is among the x with
+\\ Q(x) <= T2(alpha) (qfminim, one of each pair +-x); each of those that generates
+\\ O_K is normalized as in mono_normalize, which covers every +-beta + k with smallest
+\\ T2. So the smallest by mono_key of all of them is the canonical generator.
+\\ Returns [minimal polynomial of the canonical generator, 1], or, when more than
+\\ maxpts vectors would have to be checked, [minimal polynomial of the best one
+\\ known, 0] (not proved).
+mono_canonical(nf, a, maxpts = 10^5) =
+{
+  my(best = mono_normalize(nf, a), bestkey, t, V, b, key);
+  bestkey = mono_key(nf, best);
+  t = norml2(polroots(minpoly(best)));
+  \\ a margin for rounding: mono_key compares T2 rounded to 10^-6
+  V = qfminim(mono_t2mod1(nf), t * (1 + 1e-12) + 1e-6, maxpts + 1, 2)[3];
+  if (#V > maxpts, return([minpoly(best), 0]));
+  for (k = 1, #V,
+    my(v = concat([0], V[, k]));
+    if (mono_index(nf, v) != 1, next);
+    b = mono_normalize(nf, nfbasistoalg(nf, v));
+    key = mono_key(nf, b);
+    if (lex(key, bestkey) < 0, best = b; bestkey = key));
+  [minpoly(best), 1];
+}
+
 \\ Try alpha = x first, then all sum_{i>=2} c_i zk[i] with max |c_i| = 1, 2,
-\\ ..., B. At the first height where generators exist, return the smallest
-\\ one by mono_key, as its minimal polynomial (t_POL).
-\\ Returns 0 if none is found: that does NOT prove K is non-monogenic.
-mono_generator(nf, B = 3) =
+\\ ..., B, stopping at the first height where generators exist. A generator
+\\ found this way need not be canonical (one of larger height can have smaller
+\\ T2), so the best one is passed to mono_canonical, which finds the canonical
+\\ generator. Returns [minimal polynomial (t_POL), 1 if proved canonical, else 0],
+\\ or 0 if no generator is found: that does NOT prove K is non-monogenic.
+mono_generator(nf, B = 3, maxpts = 10^5) =
 {
   my(n = poldegree(nf.pol), best = 0, bestkey, v, a, key);
-  if (mono_index(nf, nfalgtobasis(nf, variable(nf.pol))) == 1, return(nf.pol));
+  \\ the root of a polredabs polynomial comes first (README); any other root is checked
+  if (mono_index(nf, nfalgtobasis(nf, variable(nf.pol))) == 1,
+    return(if (polredabs(nf.pol) == nf.pol, [nf.pol, 1],
+               mono_canonical(nf, Mod(variable(nf.pol), nf.pol), maxpts))));
   for (h = 1, B,
     forvec (w = vector(n - 1, i, [-h, h]),
       if (vecmax(abs(w)) != h, next);
@@ -61,7 +110,7 @@ mono_generator(nf, B = 3) =
       key = mono_key(nf, a);
       if (!best || lex(key, bestkey) < 0, best = a; bestkey = key));
     if (best, break));
-  if (best, minpoly(best), 0);
+  if (best, mono_canonical(nf, best, maxpts), 0);
 }
 
 \\ ---------------------------------------------------------------------------

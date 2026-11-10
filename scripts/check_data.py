@@ -16,6 +16,11 @@ With --cross-check B the PARI brute-force search (height <= B) is run on each fi
 independent check of the Magma results: it must find no generator for a field marked -1,
 and no generator smaller (see monogenic.gp) than the stored one for a field marked 1.
 
+With --canonical, each generator that is not the root of the polredabs polynomial must be
+the canonical one: every element of O_K with T2 at most that of the stored generator is
+checked (see canonicalize.py, which replaces the ones that are not). Fields with more than
+--max-points such elements are counted, not errors.
+
 With --reprove, PARI decides each field again where it can: cubic fields exactly by
 solving the Thue equation (the row must match, generator included), quartic fields exactly
 with --method factor (likewise), and for the other rows marked -1 it looks for a common
@@ -27,6 +32,7 @@ other way.
     sage -python scripts/check_data.py --source db --degrees 3-4 --cross-check 2
     sage -python scripts/check_data.py --source db --degrees 3 --reprove
     python3 scripts/check_data.py --fields fields.txt
+    python3 scripts/check_data.py --degrees 5-7 --canonical
 """
 
 import argparse
@@ -35,7 +41,7 @@ import os
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from monogenic import (DATA_DIR, cubic_generator, factor_generator, find_generator, obstruction, format_data, generator_key, is_smaller, label_disc,
+from monogenic import (DATA_DIR, canonical_generator, cubic_generator, is_polredabs, factor_generator, find_generator, obstruction, format_data, generator_key, is_smaller, label_disc,
                        format_coeffs, label_key, locked, pari, parse_coeffs, read_data, write_data)
 from progress import Progress
 
@@ -119,7 +125,7 @@ def reprove(label, n, mono, coeffs, field_coeffs):
     return [], False
 
 
-def check_file(path, fields, cross_bound, progress, do_reprove=False):
+def check_file(path, fields, cross_bound, progress, do_reprove=False, canonical_points=None):
     errors = []
     n = int(os.path.basename(path)[len("degree"):-len(".txt")])
     rows = read_data(path)
@@ -130,7 +136,7 @@ def check_file(path, fields, cross_bound, progress, do_reprove=False):
     labels = [row[0] for row in rows]
     if labels != sorted(labels, key=label_key) or len(set(labels)) != len(labels):
         errors.append("rows are not sorted or not unique")
-    skipped = unproved = 0
+    skipped = unproved = not_canonical = 0
     progress.start(os.path.basename(path))
     for i, (label, mono, coeffs) in enumerate(rows):
         if int(label.split(".")[0]) != n:
@@ -142,6 +148,13 @@ def check_file(path, fields, cross_bound, progress, do_reprove=False):
             errors.append("%s: monogenic must be 1, -1 or 0, with monogenic_coeffs iff 1" % label)
         else:
             errors += check_generator(label, n, coeffs, fields.get(label))
+            if canonical_points and not is_polredabs(coeffs):
+                gen, proved = canonical_generator(coeffs, canonical_points)
+                if not proved:
+                    not_canonical += 1
+                elif gen != coeffs:
+                    errors.append("%s: not the canonical generator: %s comes first (fix with "
+                                  "canonicalize.py)" % (label, format_coeffs(gen)))
         if (cross_bound or do_reprove) and mono == -1 and label not in fields:
             skipped += 1
         if do_reprove and label in fields and (n in (3, 4) and mono != 0 or mono == -1):
@@ -154,7 +167,7 @@ def check_file(path, fields, cross_bound, progress, do_reprove=False):
             if field_coeffs is not None:
                 errors += cross_check(label, mono, coeffs, field_coeffs, cross_bound)
         progress(i + 1, len(rows), ", %d errors" % len(errors))
-    return len(rows), errors, skipped, unproved
+    return len(rows), errors, skipped, unproved, not_canonical
 
 
 def main():
@@ -167,6 +180,10 @@ def main():
                         help="also run the PARI search up to height B on every field")
     parser.add_argument("--reprove", action="store_true",
                         help="decide the fields again with PARI where it can (see above)")
+    parser.add_argument("--canonical", action="store_true",
+                        help="also prove that each generator is the canonical one (see above)")
+    parser.add_argument("--max-points", type=int, default=10**5,
+                        help="--canonical: the most elements to check for one field (default 10^5)")
     parser.add_argument("--fix", action="store_true",
                         help="first rewrite each file in the standard format")
     parser.add_argument("--progress-every", type=float, default=30, metavar="SECONDS",
@@ -191,12 +208,16 @@ def main():
                 write_data(path, read_data(path))
         if args.source == "db":
             fields.update(db_fields([row[0] for row in read_data(path)]))
-        count, errors, skipped, unproved = check_file(path, fields, args.cross_check, progress, args.reprove)
+        count, errors, skipped, unproved, not_canonical = check_file(
+            path, fields, args.cross_check, progress, args.reprove,
+            args.max_points if args.canonical else None)
         print("%s: %d rows, %d errors" % (os.path.basename(path), count, len(errors))
               + ("; %d rows with monogenic = -1 not cross-checked, as that needs the LMFDB "
                  "polynomial (--source db or --fields)" % skipped if skipped else "")
               + ("; %d rows with monogenic = -1 have no PARI proof (not an error)" % unproved
-                 if unproved else ""))
+                 if unproved else "")
+              + ("; %d generators not proved canonical (more than --max-points elements)" % not_canonical
+                 if not_canonical else ""))
         for e in errors:
             print("  " + e)
         ok = ok and not errors

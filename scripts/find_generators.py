@@ -26,8 +26,11 @@ Methods:
     every quartic field both ways and finds the canonical generator, like magma but
     without it. E.g. for the quartic fields not decided yet:
         --degrees 4 --method factor --only-new
-  * pari: brute-force search over small elements (see monogenic.gp), any degree. When it
-    finds nothing, the tests in `local` are tried; fields where both fail are not written.
+  * pari: brute-force search over small elements (see monogenic.gp), any degree. From the
+    best generator found, every element with T2 at most its T2 is checked, which gives the
+    canonical generator, with a proof (generators where that would take more than
+    --max-points elements are kept but reported as NOT PROVED CANONICAL). When it finds
+    nothing, the tests in `local` are tried; fields where both fail are not written.
   * local: only the tests that prove a field is NOT monogenic (common index divisors,
     and the index form missing +-1 modulo small prime powers; see monogenic.gp). Writes
     rows with monogenic = -1 and nothing else, e.g. for the fields the search left over:
@@ -89,7 +92,7 @@ import time
 from collections import Counter
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from monogenic import (NULL, cubic_generator, data_path, factor_generator, find_generator, format_coeffs,
+from monogenic import (NULL, cubic_generator, data_path, factor_generator, format_coeffs, search_generator,
                        merge_data, obstruction, parse_coeffs, read_data, root_generates)
 from progress import Progress, fmt_time
 
@@ -199,7 +202,8 @@ def main():
     parser.add_argument("--maxp", type=int, default=50,
                         help="pari, local: try local obstructions at primes up to this (default 50)")
     parser.add_argument("--max-points", type=parse_int, default=10**5,
-                        help="pari, local: skip a modulus needing more evaluations (default 10^5)")
+                        help="pari, local: skip a modulus needing more evaluations; pari: the most "
+                             "elements checked to prove a generator is canonical (default 10^5)")
     parser.add_argument("--show-proofs", action="store_true",
                         help="print the proof found for each field marked -1 by pari, local or factor")
     parser.add_argument("--shard", default="0/1", help="i/k: only every k-th field, from the i-th")
@@ -312,7 +316,11 @@ def main():
                     if args.show_proofs and gen is None:
                         print("%s: not monogenic, factored index form" % label, file=sys.stderr, flush=True)
             elif method in ("pari", "local"):
-                gen = find_generator(coeffs, args.bound) if method == "pari" else None
+                gen, proved = search_generator(coeffs, args.bound, args.max_points) \
+                    if method == "pari" else (None, False)
+                if gen is not None and not proved:
+                    skipped["generators not proved canonical (more than --max-points elements to check)"] += 1
+                    print("NOT PROVED CANONICAL %s: %s" % (label, format_coeffs(gen)), file=sys.stderr, flush=True)
                 proof = obstruction(coeffs, args.maxp, args.max_points) if gen is None else None
                 if gen is not None:
                     batch[label] = (label, 1, gen)

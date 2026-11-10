@@ -54,3 +54,11 @@ find_generators.py --degrees 25 --method pari -B 1 --batch 1
 # into the same data file are locked, so this is safe):
 # find_generators.py --degrees 6 --method pari -B 3 --only-new --shard 0/2
 # find_generators.py --degrees 6 --method pari -B 3 --only-new --shard 1/2
+
+# Replace stored generators by the canonical ones (offline, no LMFDB needed; see README,
+# "Proving a generator is canonical"). Roughly 10 minutes per 300,000 rows.
+# canonicalize.py --degrees 4
+# canonicalize.py --degrees 5
+# canonicalize.py --degrees 6
+# canonicalize.py --degrees 7
+# canonicalize.py --degrees 8-47

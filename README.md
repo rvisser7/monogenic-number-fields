@@ -110,10 +110,10 @@ no generator for a field marked -1, and none smaller than the stored one for a f
 * **PARI brute force** ([`scripts/monogenic.gp`](scripts/monogenic.gp)): search
   $\alpha = \sum_{i \ge 2} c_i \omega_i$ over the LLL-reduced integral basis with
   $\max |c_i| = 1, 2, \dots, B$, computing $[\mathcal{O}_K : \mathbb{Z}[\alpha]]$ as a determinant.
-  This works in any degree but can only show that a field *is* monogenic, and the generator it
-  finds is the smallest one it saw, which may not be the global minimum. Use it where Magma
-  does not apply (degree $\ge 5$), and prefer Magma's rows where both exist. When it finds
-  nothing, the tests below are tried.
+  This works in any degree but can only show that a field *is* monogenic. It stops at the first
+  height where a generator exists, and a generator of larger height can have smaller $T_2$, so the
+  best one found, $\alpha$, is then made canonical with a proof (see *Proving a generator is
+  canonical* below). When it finds nothing, the tests below are tried.
 * **Proofs of non-monogenicity** (`--method local`, any degree): with
   $\alpha = \sum x_i \omega_i$, $\mathcal{O}_K = \mathbb{Z}[\alpha]$ iff the index form
   $I(x) = \det(1, \alpha, \dots, \alpha^{n-1})$, of degree $d = n(n-1)/2$, equals $\pm 1$.
@@ -157,6 +157,7 @@ sage -python scripts/find_generators.py --degrees 6 --method pari --lmfdb-monoge
 sage -python scripts/run_jobs.py jobs.txt --parallel 4               # run the jobs in jobs.txt in parallel (see below)
 python3 scripts/merge.py rows.txt [--replace]                       # merge rows from a manual Magma run
 python3 scripts/check_data.py [--fix]                               # validate every data/degree<n>.txt
+python3 scripts/canonicalize.py --degrees 5-7                       # replace stored generators by the canonical ones
 sage -python scripts/check_data.py --source db --cross-check 2      # also against the LMFDB and the PARI search
 sage -python scripts/check_data.py --source db --reprove            # redo degrees 3, 4 exactly (Thue; --method factor, slow), proofs for -1 rows
 sage -python scripts/compare_lmfdb.py --write compare/              # compare with nf_fields.monogenic in the LMFDB
@@ -188,10 +189,34 @@ A field keeps one generator, the first in the canonical order above. When any me
 it only if it comes first in that order, i.e. it is the polredabs root, or has smaller $T_2$ norm
 (then smaller $S(P)$), and it passes the independent check below. Each replacement is
 printed as `BETTER ...`. So a smaller generator from Magma or the Thue solver replaces one from the
-PARI search (which only searches up to height `-B`), but a later search never replaces a smaller one.
+PARI search (made canonical as below unless that needs too many elements), but a later search never
+replaces a smaller one.
 `--replace` lets any checked generator replace the stored one. To bring the stored generators up to
 date after a change to the canonical order, rerun a method on just the fields whose generator is not
 the LMFDB polynomial, e.g. `find_generators.py --degrees 3 --method thue --recheck-generators`.
+
+### Proving a generator is canonical
+
+Given a generator $\alpha$ of $\mathcal{O}_K$, every generator $\beta$ with
+$T_2(\beta) \le T_2(\alpha)$ also has $Q(\beta) \le T_2(\alpha)$, where
+$Q(\beta) = T_2(\beta) - \operatorname{Tr}(\beta)^2/n = \min_{s \in \mathbb{R}} T_2(\beta + s)$ is a
+positive definite quadratic form on $\mathcal{O}_K/\mathbb{Z}$ (in the coordinates
+$x_2, \dots, x_n$ on the integral basis, since $\omega_1 = 1$). So `mono_canonical` in
+[`scripts/monogenic.gp`](scripts/monogenic.gp) lists all $x$ with $Q(x) \le T_2(\alpha)$ (`qfminim`,
+one of each pair $\pm x$), keeps those with $[\mathcal{O}_K : \mathbb{Z}[\alpha]] = 1$, replaces each
+by the best of $\pm\beta + k$ ($k \in \mathbb{Z}$, as `mono_normalize` does for every generator), and
+takes the first in the canonical order: that is the canonical generator, with a proof. If more than
+`--max-points` ($10^5$) elements would have to be checked, the generator is kept but reported as
+`NOT PROVED CANONICAL`. That happens for generators with huge coefficients (some cubic and
+quartic fields have only such generators), where `canonicalize.py` uses the exact methods instead;
+on samples of 40 fields in each degree 5-12 it never happened (10 to 14,000 elements, at most
+1.4 s per field).
+
+The PARI search does this for every generator it finds. For the stored generators,
+`canonicalize.py --degrees 5-7` does it offline (the stored generator defines the field, so
+the LMFDB is not needed) and merges any better generator as usual (`BETTER ...`), and
+`check_data.py --canonical` reports stored generators that are not canonical. Rows from Magma,
+the Thue solver and `--method factor` are canonical already, since those find every generator.
 
 ### Conflicts: a generator always beats -1
 
