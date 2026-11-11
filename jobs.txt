@@ -21,19 +21,26 @@
 #find_generators.py --degrees 9 --method pari -B 1 --only-new
 #find_generators.py --degrees 10 --method pari -B 1 --only-new
 
+canonicalize.py --degrees 3
+canonicalize.py --degrees 4
+canonicalize.py --degrees 5
+canonicalize.py --degrees 6
+canonicalize.py --degrees 7
+canonicalize.py --degrees 8
+
 
 # Runs which go through all fields again!  (degrees beyond 10 will be very slow, so only the first few are found...)
 
-find_generators.py --degrees 3 --method pari -B 100 --only-new    # Degree 3, bound 50 is done!  (done in ~10hours)
-find_generators.py --degrees 4 --method pari -B 8 --only-new
-find_generators.py --degrees 5 --method pari -B 4 --only-new
-find_generators.py --degrees 6 --method pari -B 3 --only-new
-find_generators.py --degrees 7 --method pari -B 2 --only-new
-find_generators.py --degrees 8 --method pari -B 2 --only-new
-find_generators.py --degrees 9 --method pari -B 1 --only-new
-find_generators.py --degrees 10 --method pari -B 1 --only-new
-find_generators.py --degrees 11 --method pari -B 1 --batch 50 --only-new
-find_generators.py --degrees 12 --method pari -B 1 --batch 20 --only-new
+#find_generators.py --degrees 3 --method pari -B 100 --only-new    # Degree 3, bound 50 is done!  (done in ~10hours)
+#find_generators.py --degrees 4 --method pari -B 8 --only-new
+#find_generators.py --degrees 5 --method pari -B 4 --only-new
+#find_generators.py --degrees 6 --method pari -B 3 --only-new
+#find_generators.py --degrees 7 --method pari -B 2 --only-new
+#find_generators.py --degrees 8 --method pari -B 2 --only-new
+#find_generators.py --degrees 9 --method pari -B 1 --only-new
+#find_generators.py --degrees 10 --method pari -B 1 --only-new
+#find_generators.py --degrees 11 --method pari -B 1 --batch 50 --only-new
+#find_generators.py --degrees 12 --method pari -B 1 --batch 20 --only-new
 find_generators.py --degrees 13 --method pari -B 1 --batch 10 --only-new
 find_generators.py --degrees 14 --method pari -B 1 --batch 1 --only-new
 find_generators.py --degrees 15 --method pari -B 1 --batch 1 --only-new
