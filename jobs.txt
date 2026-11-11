@@ -24,7 +24,7 @@
 
 # Runs which go through all fields again!  (degrees beyond 10 will be very slow, so only the first few are found...)
 
-find_generators.py --degrees 3 --method pari -B 50 --only-new
+find_generators.py --degrees 3 --method pari -B 100 --only-new    # Degree 3, bound 50 is done!  (done in ~10hours)
 find_generators.py --degrees 4 --method pari -B 8 --only-new
 find_generators.py --degrees 5 --method pari -B 4 --only-new
 find_generators.py --degrees 6 --method pari -B 3 --only-new
