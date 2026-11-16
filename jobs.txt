@@ -1,10 +1,15 @@
 # Jobs for scripts/run_jobs.py: one per line, a script in scripts/ and its arguments.
 #     sage -python scripts/run_jobs.py jobs.txt --parallel 4
 #
-# PARI brute-force search (--method pari) on the fields with no row yet, with a bound -B
-# that gets smaller as the degree goes up. The search tries up to about (2B+1)^(n-1)/2
-# elements per field, all of them when the field has no generator up to height B. Time
-# per such field, measured on one field of each degree:
+# PARI brute-force search (--method pari) on the fields with no row yet. It first searches
+# by T2 (up to --max-points elements, default 10^5), which finds the canonical generator in
+# about 0.1 s in degrees 5-30 when there is one with small T2; a field where that finds
+# nothing takes 1-4 s in degree 12 (4-10 s in degrees 14-20). Only then it searches by
+# height up to -B, which tries up to about (2B+1)^(n-1)/2 elements per field, all of them
+# when the field has no generator up to height B: in degree 16, B=1 takes about 5 minutes
+# per such field, so use -B 0 (skip it) in high degree. Time of the search by height per
+# such field (before the T2 search and its faster index test; now about 4x faster in
+# degree 12), measured on one field of each degree:
 #   degree 5:  B=3 0.02 s, B=4 0.05 s, B=5 0.12 s
 #   degree 6:  B=2 0.04 s, B=3 0.20 s, B=4 0.66 s
 #   degree 7:  B=2 0.22 s, B=3 1.9 s

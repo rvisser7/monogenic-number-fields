@@ -55,10 +55,12 @@ def root_generates(coeffs, label):
 
 
 def search_generator(coeffs, bound=3, max_points=10**5):
-    """Search for a generator of O_K, K = Q[x]/(f) with f given by ascending coeffs, up to
-    height `bound` on the integral basis, and from the best one found, the canonical
-    generator (mono_canonical in monogenic.gp: every element with T2 at most that of the
-    one found is checked, if there are at most max_points of them).
+    """Search for a generator of O_K, K = Q[x]/(f) with f given by ascending coeffs: the
+    elements in the order of T2 (at most max_points of them), then, if none of those
+    generates O_K, up to height `bound` on the integral basis (bound 0 skips that), and
+    from the best one found, the canonical generator (mono_canonical in monogenic.gp: every
+    element with T2 at most that of the one found is checked, if there are at most
+    max_points of them).
     Returns (ascending coefficients of its minimal polynomial, True if it is proved to be
     the canonical generator), or (None, False) if the search found nothing (which does not
     prove non-monogenicity)."""

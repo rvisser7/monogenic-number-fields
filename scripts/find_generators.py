@@ -26,11 +26,16 @@ Methods:
     every quartic field both ways and finds the canonical generator, like magma but
     without it. E.g. for the quartic fields not decided yet:
         --degrees 4 --method factor --only-new
-  * pari: brute-force search over small elements (see monogenic.gp), any degree. From the
-    best generator found, every element with T2 at most its T2 is checked, which gives the
-    canonical generator, with a proof (generators where that would take more than
-    --max-points elements are kept but reported as NOT PROVED CANONICAL). When it finds
-    nothing, the tests in `local` are tried; fields where both fail are not written.
+  * pari: brute-force search over small elements (see monogenic.gp), any degree. First
+    the elements in the order of their T2 norm, up to --max-points of them, which finds the
+    canonical generator after a few hundred elements in most fields; if none of them
+    generates O_K, then all elements with coordinates at most B in absolute value on the
+    integral basis (about (2B+1)^(n-1)/2 of them, so in high degree use -B 0 to skip
+    this, or -B 1).
+    From the best generator found, every element with T2 at most its T2 is checked, which
+    gives the canonical generator, with a proof (generators where that would take more
+    than --max-points elements are kept but reported as NOT PROVED CANONICAL). When it
+    finds nothing, the tests in `local` are tried; fields where both fail are not written.
   * local: only the tests that prove a field is NOT monogenic (common index divisors,
     and the index form missing +-1 modulo small prime powers; see monogenic.gp). Writes
     rows with monogenic = -1 and nothing else, e.g. for the fields the search left over:
@@ -198,12 +203,14 @@ def main():
                              "field) is 1, skipping fields with a common index divisor")
     parser.add_argument("--magma", default="magma", help="the magma executable")
     parser.add_argument("-B", "--bound", type=int, default=3,
-                        help="pari: max |coordinate| on the integral basis (default 3)")
+                        help="pari: max |coordinate| on the integral basis in the search by height, "
+                             "which only runs if the search by T2 finds nothing; 0 skips it (default 3)")
     parser.add_argument("--maxp", type=int, default=50,
                         help="pari, local: try local obstructions at primes up to this (default 50)")
     parser.add_argument("--max-points", type=parse_int, default=10**5,
                         help="pari, local: skip a modulus needing more evaluations; pari: the most "
-                             "elements checked to prove a generator is canonical (default 10^5)")
+                             "elements checked in the search by T2, and to prove a generator is "
+                             "canonical (default 10^5)")
     parser.add_argument("--show-proofs", action="store_true",
                         help="print the proof found for each field marked -1 by pari, local or factor")
     parser.add_argument("--shard", default="0/1", help="i/k: only every k-th field, from the i-th")

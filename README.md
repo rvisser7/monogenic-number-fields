@@ -108,12 +108,29 @@ no generator for a field marked -1, and none smaller than the stored one for a f
   few seconds (about 0.3 s on average here). The method returns "undecided" only in degenerate cases
   (e.g. a degenerate conic), which have not occurred.
 * **PARI brute force** ([`scripts/monogenic.gp`](scripts/monogenic.gp)): search
-  $\alpha = \sum_{i \ge 2} c_i \omega_i$ over the LLL-reduced integral basis with
-  $\max |c_i| = 1, 2, \dots, B$, computing $[\mathcal{O}_K : \mathbb{Z}[\alpha]]$ as a determinant.
-  This works in any degree but can only show that a field *is* monogenic. It stops at the first
-  height where a generator exists, and a generator of larger height can have smaller $T_2$, so the
-  best one found, $\alpha$, is then made canonical with a proof (see *Proving a generator is
-  canonical* below). When it finds nothing, the tests below are tried.
+  $\alpha = \sum_{i \ge 2} c_i \omega_i$ over the LLL-reduced integral basis, in two orders.
+  First by $T_2$: all $\alpha$ with $Q(\alpha) \le t$ (the quadratic form of *Proving a generator
+  is canonical* below, enumerated with `qfminim`) for growing $t$, until one generates
+  $\mathcal{O}_K$ or more than `--max-points` ($10^5$) elements would be needed. Since the
+  canonical generator has the smallest $T_2$, this usually finds it after a few hundred elements,
+  in any degree. Only if that finds nothing, by height: all $\alpha$ with
+  $\max |c_i| = 1, 2, \dots, B$ (`-B`, 0 skips it), stopping at the first height where a generator
+  exists; these are about $(2B+1)^{n-1}/2$ elements, so in high degree this is slow even for
+  $B = 1$. Either way the best generator found, $\alpha$, is then made canonical with a proof (see
+  *Proving a generator is canonical* below). This works in any degree but can only show that a
+  field *is* monogenic. When it finds nothing, the tests below are tried.
+
+  Each element is tested cheaply first: $p \mid [\mathcal{O}_K : \mathbb{Z}[\alpha]]$ only
+  depends on $\alpha \bmod p$, so a table of the $2^{n-1}$ classes mod 2 says which ones can
+  contain generators (usually most of them, but only 15-30% in some fields); then
+  $\operatorname{disc}(\operatorname{charpoly}(\alpha)) = [\mathcal{O}_K : \mathbb{Z}[\alpha]]^2
+  \operatorname{disc}(K)$ is checked modulo a prime of 30 bits; only elements passing both get
+  the exact index (a determinant). On 40 fields of degree 12 the search takes 0.1 s per field
+  (18 s before, with the search by height only and $B = 1$), and on fields of degree 14 to 30
+  from `data/` 0.04-0.4 s. A field where it finds nothing takes 1-4 s for the search by $T_2$ in
+  degree 12 (4-10 s in degrees 14-20), plus 1-3 s for $B = 1$ (19 s before); in degree 16 the
+  search by height with $B = 1$ takes about 5 minutes, so there `-B 0` (and a larger
+  `--max-points` if needed) is the better use of the time.
 * **Proofs of non-monogenicity** (`--method local`, any degree): with
   $\alpha = \sum x_i \omega_i$, $\mathcal{O}_K = \mathbb{Z}[\alpha]$ iff the index form
   $I(x) = \det(1, \alpha, \dots, \alpha^{n-1})$, of degree $d = n(n-1)/2$, equals $\pm 1$.

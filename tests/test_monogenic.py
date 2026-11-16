@@ -243,6 +243,7 @@ class TestCanonical(unittest.TestCase):
         old, new = self.IMPROVED["5.3.6802267.1"]
         self.assertEqual(canonical_generator(old, max_points=10), (old, False))
 
+
     def test_canonicalize_script(self):
         import canonicalize
         import check_data
@@ -270,6 +271,62 @@ class TestCanonical(unittest.TestCase):
             self.assertIn("2 generators: 1 polredabs roots, 0 proved canonical, 1 replaced", out.getvalue())
             self.assertIn("BETTER 4.2.214843.1", err.getvalue())
             self.assertFalse(os.path.exists(log))
+
+
+class TestSearch(unittest.TestCase):
+    """The search by T2 and the search by height (mono_generator in monogenic.gp)."""
+    # LMFDB polynomial (its root does not generate O_K) -> canonical generator (data/)
+    FIELDS = {
+        "6.2.4948236.1": ([-4, -4, 3, 3, 1, -3, 1], [-29, 1, 43, 11, -11, -2, 1]),
+        "8.2.51164987.1": ([-1, 2, 1, -7, 7, -10, 5, -3, 1], [-1, -11, -40, -52, -10, 4, -5, -1, 1]),
+        "12.0.369733496832.1": ([1, -6, 15, -22, 22, -20, 24, -20, 11, -8, 5, -2, 1],
+                                [7, -38, 103, -194, 281, -318, 296, -220, 135, -64, 24, -6, 1]),
+        "14.2.52058057626129.1": ([1, -2, 3, -4, 4, -4, 4, -5, 4, -4, 4, -4, 3, -2, 1],
+                                  [1, -4, 5, 3, -16, 13, 10, -25, 10, 13, -16, 3, 5, -4, 1]),
+    }
+
+    def test_t2_search(self):
+        for label, (f, gen) in self.FIELDS.items():
+            with self.subTest(label=label):
+                # -B 0: the search by T2 only
+                self.assertEqual(search_generator(f, bound=0), (gen, True))
+                self.assertTrue(verify_generator(gen, label))
+
+    def test_orders_agree(self):
+        # the search by height only (t2 = 0) gives the same canonical generator
+        for label in ["6.2.4948236.1", "8.2.51164987.1"]:
+            with self.subTest(label=label):
+                f, gen = self.FIELDS[label]
+                res = pari("mono_generator")(pari.nfinit(pari.Polrev(f)), 2, 10**5, 0)
+                self.assertEqual([int(c) for c in pari.Vecrev(res[0])], gen)
+                self.assertEqual(res[1], 1)
+
+    def test_gives_up(self):
+        f = self.FIELDS["12.0.369733496832.1"][0]
+        self.assertEqual(search_generator(f, bound=0, max_points=5), (None, False))
+
+    def test_isgen(self):
+        # the quick tests (table mod 2, discriminant mod q) never reject a generator
+        for f, _ in self.FIELDS.values():
+            nf = pari.nfinit(pari.Polrev(f))
+            S = pari("(nf) -> mono_add_table(mono_searchdata(nf), 10^9)")(nf)
+            res = pari("""(nf, S) -> my(n = poldegree(nf.pol), r = [0, 0]);
+                for (k = 1, 300,
+                  my(w = vector(n - 1, i, random(5) - 2), g = mono_index(nf, concat([0], w)~) == 1);
+                  if (mono_isgen(S, w) != g, return(-1));
+                  r[1 + g]++);
+                r""")(nf, S)
+            self.assertNotEqual(res, -1)
+        # and every generator of a small field passes them
+        nf = pari.nfinit(pari.Polrev(self.FIELDS["6.2.4948236.1"][0]))
+        S = pari("(nf) -> mono_add_table(mono_searchdata(nf), 10^9)")(nf)
+        bad = pari("""(nf, S) -> my(c = 0, bad = 0);
+            forvec (w = vector(5, i, [-2, 2]),
+              my(g = mono_index(nf, concat([0], w)~) == 1);
+              c += g; if (mono_isgen(S, w) != g, bad++));
+            [c, bad]""")(nf, S)
+        self.assertGreater(bad[0], 0)
+        self.assertEqual(bad[1], 0)
 
 
 class TestMerge(unittest.TestCase):

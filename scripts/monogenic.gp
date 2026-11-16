@@ -61,57 +61,202 @@ mono_t2mod1(nf) =
   G[2..n, 2..n];
 }
 
+\\ ---------------------------------------------------------------------------
+\\ Fast index test for the searches below. Elements are a = sum_{i>=2} w[i-1] zk[i]
+\\ (w a row vector of length n - 1; x_1 only translates a, which does not change
+\\ Z[a]), and the index [O_K : Z[a]] = |det(1, a, ..., a^(n-1))| is computed with the
+\\ integer multiplication tables of nf.zk only (no nfbasistoalg / nfalgtobasis).
+\\
+\\ Two quick tests reject almost all elements before that (see mono_isgen). First,
+\\ whether a prime p divides the index only depends on w mod p (it says that the
+\\ powers of a are dependent mod p), so for p = 2 a table of the 2^(n-1) classes
+\\ mod 2 says which classes can contain generators at all, and the search by
+\\ height only visits those. a mod 2 must generate O_K / 2 O_K as an F_2-algebra:
+\\ usually most classes can (median 70-90% on samples in degrees 8-12), but in
+\\ some fields only 15-30% can.
+
+\\ det(1, a, ..., a^(n-1)) on nf.zk, for T = mono_multables(nf) (or T mod p, then the
+\\ determinant mod p).
+mono_det(T, w) =
+{
+  my(n = #T, A = w[1] * T[2], M = matrix(n, n), v = vectorv(n, i, i == 1));
+  for (i = 2, n - 1, if (w[i], A += w[i] * T[i + 1]));
+  for (j = 1, n, M[, j] = v; if (j < n, v = A * v));
+  matdet(M);
+}
+
+\\ The residue classes mod p (as above) that can contain generators: a Vecsmall t
+\\ with t[mono_class(w, p)] = 1 iff p does not divide the index of a.
+mono_class(w, p) = fromdigits(w % p, p) + 1;
+mono_restable(T, p) =
+{
+  my(n = #T, t = vectorsmall(p^(n - 1)), Tp = [Mod(1, p) * M | M <- T]);
+  forvec (r = vector(n - 1, i, [0, p - 1]),
+    if (mono_det(Tp, r) != 0, t[mono_class(r, p)] = 1));
+  t;
+}
+
+\\ The table mod 2 if it is worth building for about ncand candidates (it costs
+\\ 2^(n-1) determinants mod 2, so it is built for at most 2^20 classes), else 0.
+mono_maybe_table(T, ncand) =
+{
+  my(n = #T);
+  if (n - 1 > 20 || 2^(n - 1) > ncand / 4, return(0));
+  mono_restable(T, 2);
+}
+
+\\ The data for mono_isgen: [T, table mod 2 or 0, Z, fq, target]. A second, cheaper
+\\ test comes before the determinant: disc(minpoly(a)) = [O_K : Z[a]]^2 disc(K), so a
+\\ generator has disc(charpoly(a)) = disc(K). This is checked modulo a prime q of 30
+\\ bits, in the power basis where it only takes charpoly and poldisc over F_q (several
+\\ times faster than mono_det): with a = Z w~ / d (Z the numerators of nf.zk[2..n] on
+\\ the powers of the root, d their denominator), charpoly(d a) has discriminant
+\\ d^(n(n-1)) disc(charpoly(a)). Elements passing it (all generators, and a fraction
+\\ of about 1/q of the others) are then checked exactly with mono_det.
+mono_searchdata(nf) =
+{
+  my(n = poldegree(nf.pol), T = mono_multables(nf), Z, d, q = 2^30);
+  Z = matconcat(vector(n - 1, i, Colrev(lift(nf.zk[i + 1]), n)));
+  d = denominator(Z);
+  until (d % q && nf.disc % q, q = nextprime(q + 1));
+  [T, 0, Mod(d * Z, q), Mod(1, q) * nf.pol, Mod(d, q)^(n * (n - 1)) * nf.disc];
+}
+
+\\ Build the table mod 2 in S if it is worth it for about ncand candidates.
+mono_add_table(S, ncand) = if (!S[2], S[2] = mono_maybe_table(S[1], ncand)); S;
+
+\\ Whether a (given by w) generates O_K: the table mod 2 (if any), the discriminant
+\\ mod q, then the index.
+mono_isgen(S, w) =
+{
+  if (S[2] && !S[2][mono_class(w, 2)], return(0));
+  if (poldisc(charpoly(Mod(Polrev(S[3] * w~), S[4]))) != S[5], return(0));
+  abs(mono_det(S[1], w)) == 1;
+}
+
+\\ The element a of nf for w.
+mono_elt(nf, w) = nfbasistoalg(nf, concat([0], w)~);
+
 \\ Prove that the generator alpha of O_K gives the canonical generator, or find the
 \\ canonical one. If beta generates O_K and T2(beta) <= T2(alpha), then
 \\ Q(beta) <= T2(beta) <= T2(alpha), so beta + k (some k in Z) is among the x with
 \\ Q(x) <= T2(alpha) (qfminim, one of each pair +-x); each of those that generates
 \\ O_K is normalized as in mono_normalize, which covers every +-beta + k with smallest
 \\ T2. So the smallest by mono_key of all of them is the canonical generator.
+\\ (mono_key is only computed for generators x with Q(x) at most the T2 of the best
+\\ one so far: since T2 >= Q after normalizing, the others cannot beat it.)
 \\ Returns [minimal polynomial of the canonical generator, 1], or, when more than
 \\ maxpts vectors would have to be checked, [minimal polynomial of the best one
 \\ known, 0] (not proved).
 mono_canonical(nf, a, maxpts = 10^5) =
 {
-  my(best = mono_normalize(nf, a), bestkey, t, V, b, key);
+  my(best = mono_normalize(nf, a), bestkey, t, tb, G = mono_t2mod1(nf), S, V, w, b, key);
   bestkey = mono_key(nf, best);
   t = norml2(polroots(minpoly(best)));
   \\ a margin for rounding: mono_key compares T2 rounded to 10^-6
-  V = qfminim(mono_t2mod1(nf), t * (1 + 1e-12) + 1e-6, maxpts + 1, 2)[3];
+  V = qfminim(G, t * (1 + 1e-12) + 1e-6, maxpts + 1, 2)[3];
   if (#V > maxpts, return([minpoly(best), 0]));
+  S = mono_add_table(mono_searchdata(nf), #V);
+  tb = t;
   for (k = 1, #V,
-    my(v = concat([0], V[, k]));
-    if (mono_index(nf, v) != 1, next);
-    b = mono_normalize(nf, nfbasistoalg(nf, v));
+    w = V[, k]~;
+    if (!mono_isgen(S, w), next);
+    if (qfeval(G, w~) > tb * (1 + 1e-12) + 1e-5, next);
+    b = mono_normalize(nf, mono_elt(nf, w));
     key = mono_key(nf, b);
-    if (lex(key, bestkey) < 0, best = b; bestkey = key));
+    if (lex(key, bestkey) < 0, best = b; bestkey = key; tb = key[1] / 10^6));
   [minpoly(best), 1];
 }
 
-\\ Try alpha = x first, then all sum_{i>=2} c_i zk[i] with max |c_i| = 1, 2,
-\\ ..., B, stopping at the first height where generators exist. A generator
-\\ found this way need not be canonical (one of larger height can have smaller
-\\ T2), so the best one is passed to mono_canonical, which finds the canonical
-\\ generator. Returns [minimal polynomial (t_POL), 1 if proved canonical, else 0],
-\\ or 0 if no generator is found: that does NOT prove K is non-monogenic.
-mono_generator(nf, B = 3, maxpts = 10^5) =
+\\ The root of nf.pol, if it generates O_K: then the result of mono_generator.
+mono_root_generator(nf, maxpts) =
 {
-  my(n = poldegree(nf.pol), best = 0, bestkey, v, a, key);
+  if (mono_index(nf, nfalgtobasis(nf, variable(nf.pol))) != 1, return(0));
   \\ the root of a polredabs polynomial comes first (README); any other root is checked
-  if (mono_index(nf, nfalgtobasis(nf, variable(nf.pol))) == 1,
-    return(if (polredabs(nf.pol) == nf.pol, [nf.pol, 1],
-               mono_canonical(nf, Mod(variable(nf.pol), nf.pol), maxpts))));
-  for (h = 1, B,
-    forvec (w = vector(n - 1, i, [-h, h]),
-      if (vecmax(abs(w)) != h, next);
-      my(k = 1); while (!w[k], k++); if (w[k] < 0, next);
-      v = concat([0], w)~;
-      if (mono_index(nf, v) != 1, next);
-      a = mono_normalize(nf, nfbasistoalg(nf, v));
-      key = mono_key(nf, a);
-      if (!best || lex(key, bestkey) < 0, best = a; bestkey = key));
-    if (best, break));
-  if (best, mono_canonical(nf, best, maxpts), 0);
+  if (polredabs(nf.pol) == nf.pol, [nf.pol, 1],
+      mono_canonical(nf, Mod(variable(nf.pol), nf.pol), maxpts));
 }
+
+\\ The search for a generator: try alpha = x first; then elements in the order of
+\\ T2 (mono_t2_search); if that finds none within maxpts points, all
+\\ sum_{i>=2} c_i zk[i] with max |c_i| = 1, 2, ..., B (mono_box_search; B = 0 skips
+\\ it). A generator found this way need not be canonical, so it is passed to
+\\ mono_canonical, which finds the canonical generator. Returns [minimal
+\\ polynomial (t_POL), 1 if proved canonical, else 0], or 0 if no generator is
+\\ found: that does NOT prove K is non-monogenic.
+\\ With t2 = 0, only the box search is done (the order of earlier versions); the
+\\ result is the same whenever it is proved canonical.
+mono_generator(nf, B = 3, maxpts = 10^5, t2 = 1) =
+{
+  my(r, G, S, w = 0);
+  if (r = mono_root_generator(nf, maxpts), return(r));
+  G = mono_t2mod1(nf);
+  S = mono_searchdata(nf);
+  if (t2, w = mono_t2_search(S, G, maxpts));
+  if (!w && B > 0, w = mono_box_search(S, G, B));
+  if (w, mono_canonical(nf, mono_elt(nf, w), maxpts), 0);
+}
+
+\\ Search in the order of T2: enumerate the x with Q(x) <= t (Q as in mono_t2mod1)
+\\ for growing t, until one of them generates O_K, and return the one with the
+\\ smallest Q (as w), or 0 if there are more than maxpts points before that.
+\\ The canonical generator has the smallest T2, so it is found as soon as t
+\\ reaches about its T2, usually after a few hundred elements, without looking at
+\\ the many elements of height 1 with a large T2 (in degree n there are
+\\ 3^(n-1) / 2 of those). t starts at twice the minimum of Q and grows by the
+\\ factor 2^(2/(n-1)) each round, which about doubles the number of points (they
+\\ fill an ellipsoid of dimension n - 1), so at most about twice as many points as
+\\ needed are enumerated; the points of the previous rounds are skipped.
+mono_t2_search(S, G, maxpts) =
+{
+  my(n = #G + 1, t, t0 = 0, V, best = 0, bq, q, w);
+  t = 2 * qfminim(G, , 1, 2)[2];
+  while (1,
+    V = qfminim(G, t, maxpts + 1, 2)[3];
+    if (#V > maxpts, return(0));
+    S = mono_add_table(S, #V);
+    for (k = 1, #V,
+      w = V[, k]~;
+      q = qfeval(G, V[, k]);
+      if (q < t0 * (1 - 1e-9), next);   \\ checked in an earlier round
+      if (!mono_isgen(S, w), next);
+      if (!best || q < bq, best = w; bq = q));
+    if (best, return(best));
+    t0 = t;
+    t *= 2^(2 / (n - 1)));
+}
+
+\\ Search all sum_{i>=2} c_i zk[i] with max |c_i| = 1, 2, ..., B, stopping at the
+\\ first height where generators exist, and return the one with the smallest Q
+\\ (as w), or 0. Only the classes mod 2 that can contain generators are visited
+\\ (see above): for each, every coordinate runs over the values in [-h, h] of
+\\ its parity.
+mono_box_search(S, G, B) =
+{
+  my(n = #G + 1, tab, cls, best = 0, bq, q);
+  S = mono_add_table(S, 3^(n - 1));
+  tab = S[2];
+  \\ the classes mod 2 to visit, as vectors of 0s and 1s
+  cls = if (tab, [s | s <- forvec_list(n - 1), tab[mono_class(s, 2)]], [0]);
+  for (h = 1, B,
+    foreach (cls, c,
+      my(vals = if (c === 0, vector(n - 1, i, [-h .. h]),
+                    vector(n - 1, i, [v | v <- [-h .. h], (v - c[i]) % 2 == 0])));
+      if ([1 | u <- vals, !#u] != [], next);
+      forvec (u = vector(n - 1, i, [1, #vals[i]]),
+        my(w = vector(n - 1, i, vals[i][u[i]]), k = 1);
+        if (vecmax(abs(w)) != h, next);
+        while (k < n && !w[k], k++);
+        if (k == n || w[k] < 0, next);
+        if (!mono_isgen(S, w), next);
+        q = qfeval(G, w~);
+        if (!best || q < bq, best = w; bq = q)));
+    if (best, return(best)));
+  0;
+}
+
+\\ All vectors of 0s and 1s of length m.
+forvec_list(m) = my(L = List()); forvec (r = vector(m, i, [0, 1]), listput(L, r)); Vec(L);
 
 \\ ---------------------------------------------------------------------------
 \\ Proving that O_K is NOT monogenic.
