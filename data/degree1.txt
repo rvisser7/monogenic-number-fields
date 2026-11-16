@@ -1,0 +1,4 @@
+label|monogenic|monogenic_coeffs
+text|smallint|numeric[]
+
+1.1.1.1|1|[0,1]
