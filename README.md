@@ -180,6 +180,7 @@ sage -python scripts/check_data.py --source db --reprove            # redo degre
 sage -python scripts/compare_lmfdb.py --write compare/              # compare with nf_fields.monogenic in the LMFDB
 sage -python scripts/check_lmfdb_zk.py --degrees 4 --write zk.txt      # check the LMFDB integral bases (zk, index)
 python3 scripts/export_lmfdb.py -o monogenic_coeffs.txt              # all monogenic = 1 rows in one file, label|monogenic_coeffs
+sage -python scripts/verify_export.py monogenic_coeffs.txt         # independent check of the export against the LMFDB
 python3 -m unittest discover tests                                  # run the tests (need cypari2)
 ```
 
@@ -187,6 +188,16 @@ python3 -m unittest discover tests                                  # run the te
 header `label|monogenic_coeffs`, types `text|numeric[]`, a blank line, then the rows sorted by
 degree and then like the LMFDB (|disc|, signature, index). It needs only Python;
 `--degrees 2-4` restricts the degrees, and without `-o` it writes to standard output.
+
+`verify_export.py` checks such a file independently: it uses only Sage, none of the code in
+this repository. For each row it checks that f is monic, irreducible, of the degree in the
+label, that Q(alpha) is the LMFDB field (the LMFDB polynomial has a root in Q[x]/(f), found by
+PARI and checked exactly by Sage), and that disc(f) equals disc(K), both in the LMFDB and in
+the label. Since disc(f) = [O_K : Z[alpha]]^2 disc(K), this proves O_K = Z[alpha]. It reads the
+fields from the LMFDB (`lmfdb` or lmfdb-lite), or with `--fields` from a file of
+`label|[coeffs]` lines; `--no-fields` skips the isomorphism check. Every failing row is printed
+as `label|reason`. It takes about 3 hours for the whole export (mostly degrees 2-7, a few ms per
+field; about 1-3 s per field in degree 40-47); split the file to run it in parallel.
 
 `find_generators.py` reads the fields from the LMFDB database (the `lmfdb` package, or
 [lmfdb-lite](https://github.com/roed314/lmfdb-lite):
