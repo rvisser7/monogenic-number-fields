@@ -177,7 +177,7 @@ python3 scripts/check_data.py [--fix]                               # validate e
 python3 scripts/canonicalize.py --degrees 5-7                       # replace stored generators by the canonical ones
 sage -python scripts/check_data.py --source db --cross-check 2      # also against the LMFDB and the PARI search
 sage -python scripts/check_data.py --source db --reprove            # redo degrees 3, 4 exactly (Thue; --method factor, slow), proofs for -1 rows
-sage -python scripts/compare_lmfdb.py --write compare/              # compare with nf_fields.monogenic in the LMFDB
+sage -python scripts/compare_lmfdb.py --write compare/              # compare with nf_fields.monogenic in the LMFDB (+ compare/monogenic_update.txt)
 sage -python scripts/check_lmfdb_zk.py --degrees 4 --write zk.txt      # check the LMFDB integral bases (zk, index)
 python3 scripts/export_lmfdb.py -o monogenic_coeffs.txt              # all monogenic = 1 rows in one file, label|monogenic_coeffs
 sage -python scripts/verify_export.py monogenic_coeffs.txt         # independent check of the export against the LMFDB

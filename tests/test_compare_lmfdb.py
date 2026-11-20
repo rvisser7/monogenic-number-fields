@@ -131,6 +131,15 @@ class TestCompare(unittest.TestCase):
         self.assertEqual(sorted(known), ["3.1.104.1", "3.1.107.1", "3.1.76.1"])
         self.assertEqual(counts["total"], 4)  # and 3.3.81.1, with monogenic = 0
 
+    def test_update_rows(self):
+        known = {label: v for label, v in LMFDB.items() if v[0] not in (0, None)}
+        ours = dict(OURS, **{"3.3.49.1": (1, [1, -2, -1, 1])})  # LMFDB value 2 is unexpected
+        result = compare(ours, known)
+        self.assertEqual(compare_lmfdb.update_rows(ours, known, result),
+                         [("3.1.31.1", 1), ("3.1.44.1", 1), ("3.3.49.1", 1), ("3.1.76.1", 1),
+                          ("3.3.81.1", -1)])
+        self.assertIn(("3.1.588.1", -1), compare_lmfdb.update_rows(ours, known, result, True))
+
     def test_script_on_data(self):
         # Against a copy of our own degree 3 rows the script finds no conflicts, and
         # flipping one row gives a conflict and exit status 1.
@@ -152,6 +161,10 @@ class TestCompare(unittest.TestCase):
             self.assertIn("CONFLICT " + label, proc.stdout)
             with open(os.path.join(tmp, "conflicts.txt")) as fh:
                 self.assertTrue(fh.read().startswith("%s|%d|%d|" % (label, mono, -mono)))
+            with open(os.path.join(tmp, "monogenic_update.txt")) as fh:
+                update = fh.read()
+            self.assertTrue(update.startswith("label|monogenic\ntext|smallint\n\n"))
+            self.assertEqual(("%s|%d\n" % (label, mono)) in update, mono == 1)
 
 
 if __name__ == "__main__":

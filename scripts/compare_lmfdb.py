@@ -40,12 +40,20 @@ Files written by --write DIR, with all degrees together:
   lmfdb_only_no.txt      label|[coeffs], LMFDB -1 and ours 0: input for
                          find_generators.py --input --method local, or for Magma
   unexpected.txt         label|lmfdb, LMFDB values other than 1, -1, 0, null
+  monogenic_update.txt   the update for the LMFDB editors: header label|monogenic,
+                         text|smallint, a blank line, then the fields whose LMFDB value
+                         should change to ours (see update_rows): ours 1 and LMFDB not 1
+                         (our generator is a certificate), and ours -1 and LMFDB 0, null
+                         or unexpected. Ours -1 against LMFDB 1 is left out, as nothing
+                         here shows which is right, unless --update-conflicts. Our 0 rows
+                         never change an LMFDB value.
 
 Usage:
     sage -python scripts/compare_lmfdb.py
     sage -python scripts/compare_lmfdb.py --degrees 3-4 --show 50
     sage -python scripts/compare_lmfdb.py --degrees 6 --max-disc 10^4
     sage -python scripts/compare_lmfdb.py --write compare/
+    sage -python scripts/compare_lmfdb.py --write compare/ --update-conflicts
     python3 scripts/compare_lmfdb.py --lmfdb nf_fields_monogenic.txt
 """
 
@@ -219,6 +227,17 @@ def compare(ours, known):
     return out
 
 
+def update_rows(ours, known, result, all_conflicts=False):
+    """[(label, ours)] for the fields whose LMFDB monogenic value should become ours, given
+    the result of compare: where only we know the answer, where the LMFDB value is not
+    1, -1, 0 or null, and the conflicts with ours 1 (we have a generator, so the LMFDB -1
+    is wrong). The conflicts with ours -1 and LMFDB 1 only with all_conflicts."""
+    labels = result["ours_only_yes"] + result["ours_only_no"]
+    labels += [label for label in result["unexpected"] if ours.get(label, (0,))[0] in (1, -1)]
+    labels += [label for label in result["conflict"] if all_conflicts or ours[label][0] == 1]
+    return [(label, ours[label][0]) for label in sorted(labels, key=label_key)]
+
+
 SUMMARY = [("ours 1", None), ("ours -1", None), ("LMFDB 1", None), ("LMFDB -1", None),
            ("LMFDB 0", None), ("LMFDB null", None), ("LMFDB fields", None), ("agree 1", "agree_yes"),
            ("agree -1", "agree_no"), ("conflicts", "conflict"), ("only ours 1", "ours_only_yes"),
@@ -250,6 +269,8 @@ def main():
                         help="print at most N fields of each list per degree (default 10; "
                              "conflicts and unexpected values are always all printed)")
     parser.add_argument("--write", metavar="DIR", help="write the full lists to files in DIR")
+    parser.add_argument("--update-conflicts", action="store_true",
+                        help="in monogenic_update.txt, also set the LMFDB 1 to -1 where ours is -1")
     parser.add_argument("--progress-every", type=float, default=10, metavar="SECONDS",
                         help="while reading from the LMFDB, print progress this often (default 10)")
     parser.add_argument("-q", "--quiet", action="store_true", help="no progress lines")
@@ -268,8 +289,10 @@ def main():
     files = {}
     if args.write:
         os.makedirs(args.write, exist_ok=True)
-        for name in ["conflicts", "ours_only", "lmfdb_only_yes", "lmfdb_only_no", "unexpected"]:
+        for name in ["conflicts", "ours_only", "lmfdb_only_yes", "lmfdb_only_no", "unexpected",
+                     "monogenic_update"]:
             files[name] = open(os.path.join(args.write, name + ".txt"), "w")
+        files["monogenic_update"].write("label|monogenic\ntext|smallint\n\n")
 
     table, total, details = [], Counter(), []
     bad = Counter()
@@ -324,6 +347,8 @@ def main():
                     files[key].write("%s|%s\n" % (label, format_coeffs(coeffs) if coeffs else NULL))
             for label in result["unexpected"]:
                 files["unexpected"].write("%s|%r\n" % (label, known[label][0]))
+            for label, mono in update_rows(ours, known, result, args.update_conflicts):
+                files["monogenic_update"].write("%s|%d\n" % (label, mono))
         sys.stdout.flush()
 
     log.say("done")
