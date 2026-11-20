@@ -179,8 +179,14 @@ sage -python scripts/check_data.py --source db --cross-check 2      # also again
 sage -python scripts/check_data.py --source db --reprove            # redo degrees 3, 4 exactly (Thue; --method factor, slow), proofs for -1 rows
 sage -python scripts/compare_lmfdb.py --write compare/              # compare with nf_fields.monogenic in the LMFDB
 sage -python scripts/check_lmfdb_zk.py --degrees 4 --write zk.txt      # check the LMFDB integral bases (zk, index)
+python3 scripts/export_lmfdb.py -o monogenic_coeffs.txt              # all monogenic = 1 rows in one file, label|monogenic_coeffs
 python3 -m unittest discover tests                                  # run the tests (need cypari2)
 ```
+
+`export_lmfdb.py` writes one file for the LMFDB editors with every field marked monogenic,
+header `label|monogenic_coeffs`, types `text|numeric[]`, a blank line, then the rows sorted by
+degree and then like the LMFDB (|disc|, signature, index). It needs only Python;
+`--degrees 2-4` restricts the degrees, and without `-o` it writes to standard output.
 
 `find_generators.py` reads the fields from the LMFDB database (the `lmfdb` package, or
 [lmfdb-lite](https://github.com/roed314/lmfdb-lite):
