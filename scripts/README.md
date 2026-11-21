@@ -1,0 +1,285 @@
+This folder contains all the scripts to work with monogenic number fields.
+
+## Methods
+
+* **Polredabs root** (`--method polredabs`, any degree): the quick bulk pass. The root $\alpha$ of
+  the LMFDB polynomial $f$ generates $\mathcal{O}_K$ iff $\operatorname{disc}(f) = \operatorname{disc}(K)$,
+  since $\operatorname{disc}(f) = [\mathcal{O}_K : \mathbb{Z}[\alpha]]^2 \operatorname{disc}(K)$. That costs
+  one polynomial discriminant per field (about $10^5$ fields a second), and these rows are already
+  canonical (rule 1 above), so run this first and leave the other fields to the methods below. By
+  rule 1 these replace any other stored generator, and a field marked -1 is a conflict (see
+  below). With `--lmfdb-index` it reads only
+  the fields whose LMFDB `index` column is 1. That column is the index of the field (the gcd of
+  $[\mathcal{O}_K : \mathbb{Z}[\alpha]]$ over all $\alpha$, see below), so this skips just the
+  fields with a common index divisor, which are never monogenic.
+* **Magma** ([`magma/monogenic.m`](magma/monogenic.m)): `IndexFormEquation(O, 1)` returns all
+  generators up to equivalence for fields of degree at most 4, so it decides monogenicity and finds
+  the canonical $\alpha$ exactly. See the
+  [Magma handbook](https://magma.maths.usyd.edu.au/magma/handbook/text/418).
+* **PARI Thue solver** (`--method thue`, degree 3 only): the index form of a cubic field is a
+  binary cubic form, so $\mathcal{O}_K = \mathbb{Z}[\alpha]$ is a Thue equation $I(x, y) = \pm 1$,
+  which PARI's `thue` solves completely and unconditionally. This decides monogenicity and finds
+  the canonical $\alpha$ exactly, like Magma, and gives the same rows (checked on all 21,845 cubic
+  fields with $\lvert D \rvert \le 10^5$).
+* **Index form equation, PARI** (`--method factor`, degree 4): decides every quartic field
+  exactly, both ways, with the canonical $\alpha$, like Magma but without it. With
+  $\alpha = \sum x_i \omega_i$ the index form $I(x)$ (see below) is a ternary sextic form over
+  $\mathbb{Z}$, and $\mathcal{O}_K = \mathbb{Z}[\alpha]$ iff $I(x) = \pm 1$. Following Gaál,
+  Pethő and Pohst:
+  1. *Factoring.* $I = \pm 1$ forces each factor of $I$ over $\mathbb{Z}$ to be $\pm 1$. If $K$
+     has an imaginary quadratic subfield $k$, one factor is the norm form of $k$ on
+     $\mathcal{O}_K / (\mathcal{O}_k + \mathbb{Z})$, positive definite, so it is 1 at finitely
+     many points (`qfminim`), and on each of them $I = \pm 1$ is a polynomial equation in the one
+     remaining coordinate (`nfroots`). E.g. 4.0.1197.2:
+     $I = (x_3^2 - x_3 x_4 + x_4^2) \cdot Q(x)$, and $Q = \pm 1$ fails on all six points.
+  2. *Cubic resolvent.* In general $I = c \prod_l (U - t_l V)$, with $t_l$ the roots of the cubic
+     resolvent $P$ and $U$, $V$ ternary quadratic forms with rational coefficients (found
+     numerically, then the identity is checked exactly, so nothing depends on the numerics).
+     If $P$ is irreducible, $(U, V)$ solves a cubic Thue equation, which PARI's `thue` solves
+     completely and unconditionally. If $P$ has a rational root $t$ ($K$ has a quadratic
+     subfield), $I = c \, (U - tV) \, M(U, V)$ and both factors are fixed up to sign: a line
+     meeting a conic, at most two points per choice of signs. Either way only finitely many
+     $(u, v) = (U(x), V(x))$ are possible, often none (e.g. 4.2.1600.1, where
+     $\lvert I \rvert \ge 16/5$ for all $x \ne 0$).
+  3. *Finding $x$.* If $K$ is totally complex, with $\alpha_1, \alpha_2$ and $\alpha_3, \alpha_4$
+     complex conjugate, $\phi_1 - \phi_2 = \lvert \alpha_1 - \bar\alpha_3 \rvert^2 \ge 0$ and
+     $\phi_1 - \phi_3 = \lvert \alpha_1 - \alpha_3 \rvert^2 \ge 0$
+     ($\phi_1 = \alpha_1\alpha_2 + \alpha_3\alpha_4$ and so on), so some $U - sV$ is definite
+     and leaves finitely many $x$ (`qfminim`). Otherwise, after a quick test modulo small prime
+     powers, $x$ lies on the conic $vU - uV = 0$, parametrized with `qfsolve` and `qfparam` as
+     $x = (\lambda / g) \, w(p, q)$ with $w$ binary quadratic forms, $g \mid \det$ of the
+     parametrization, and $U(x) = u$ becomes a quartic Thue equation in $(p, q)$, again solved
+     by `thue`.
+
+  E.g. 4.0.3636.1 and 4.2.10091.1 (both S4, no local obstruction) are not monogenic: the
+  Thue equation leaves two $(u, v)$ each, and no $x$ gives them. Checks, on fields from
+  `nflist`: all 4,328 quartic fields with $\lvert D \rvert \le 30000$ are decided (2,410
+  monogenic, and 811 of them have no row in `data/` yet), giving the stored generator for every
+  one in `data/`, except that for 4.0.23517.2 (and 4.0.76432.2, found in an earlier check up to
+  $10^5$) it finds a more canonical one than the stored one (same $T_2$, smaller $S(P)$); it
+  never contradicts a row in `data/` or the search. A field takes from a few milliseconds to a
+  few seconds (about 0.3 s on average here). The method returns "undecided" only in degenerate cases
+  (e.g. a degenerate conic), which have not occurred.
+* **PARI brute force** ([`scripts/monogenic.gp`](scripts/monogenic.gp)): search
+  $\alpha = \sum_{i \ge 2} c_i \omega_i$ over the LLL-reduced integral basis, in two orders.
+  First by $T_2$: all $\alpha$ with $Q(\alpha) \le t$ (the quadratic form of *Proving a generator
+  is canonical* below, enumerated with `qfminim`) for growing $t$, until one generates
+  $\mathcal{O}_K$ or more than `--max-points` ($10^5$) elements would be needed. Since the
+  canonical generator has the smallest $T_2$, this usually finds it after a few hundred elements,
+  in any degree. Only if that finds nothing, by height: all $\alpha$ with
+  $\max |c_i| = 1, 2, \dots, B$ (`-B`, 0 skips it), stopping at the first height where a generator
+  exists; these are about $(2B+1)^{n-1}/2$ elements, so in high degree this is slow even for
+  $B = 1$. Either way the best generator found, $\alpha$, is then made canonical with a proof (see
+  *Proving a generator is canonical* below). This works in any degree but can only show that a
+  field *is* monogenic. When it finds nothing, the tests below are tried.
+
+  Each element is tested cheaply first: $p \mid [\mathcal{O}_K : \mathbb{Z}[\alpha]]$ only
+  depends on $\alpha \bmod p$, so a table of the $2^{n-1}$ classes mod 2 says which ones can
+  contain generators (usually most of them, but only 15-30% in some fields); then
+  $\operatorname{disc}(\operatorname{charpoly}(\alpha)) = [\mathcal{O}_K : \mathbb{Z}[\alpha]]^2
+  \operatorname{disc}(K)$ is checked modulo a prime of 30 bits; only elements passing both get
+  the exact index (a determinant). On 40 fields of degree 12 the search takes 0.1 s per field
+  (18 s before, with the search by height only and $B = 1$), and on fields of degree 14 to 30
+  from `data/` 0.04-0.4 s. A field where it finds nothing takes 1-4 s for the search by $T_2$ in
+  degree 12 (4-10 s in degrees 14-20), plus 1-3 s for $B = 1$ (19 s before); in degree 16 the
+  search by height with $B = 1$ takes about 5 minutes, so there `-B 0` (and a larger
+  `--max-points` if needed) is the better use of the time.
+* **Proofs of non-monogenicity** (`--method local`, any degree): with
+  $\alpha = \sum x_i \omega_i$, $\mathcal{O}_K = \mathbb{Z}[\alpha]$ iff the index form
+  $I(x) = \det(1, \alpha, \dots, \alpha^{n-1})$, of degree $d = n(n-1)/2$, equals $\pm 1$.
+  So $K$ is not monogenic if $I(x) = 1$ and $I(x) = -1$ each have no solution modulo some integer:
+  1. *Common index divisors*: by Hensel's criterion, a prime $p$ divides every
+     $[\mathcal{O}_K : \mathbb{Z}[\alpha]]$ iff, for some $f$, more primes above $p$ have residue
+     degree $f$ than there are monic irreducible polynomials of degree $f$ over $\mathbb{F}_p$
+     (e.g. 2 splitting completely in a cubic field). Only $p < n$ can do this.
+  2. *Local obstructions*: $I(x) \equiv \pm 1 \pmod{p^k}$ has no solution, found by running over
+     the $x$ modulo $p^k$. Since $I(tx) = t^d I(x)$, one modulus per prime decides solvability
+     over $\mathbb{Z}_p$: $p$ if $p \nmid d$ (and only $\gcd(d, p - 1) > 1$ can fail), $p^{v+1}$ if
+     $v = v_p(d) > 0$ ($2^{v+2}$ for $p = 2$). For example $I = 5x^3 - 2y^3$ for
+     $\mathbb{Q}(\sqrt[3]{20})$ is never $\pm 1$ mod 9. Primes up to `--maxp` (50) are tried, and
+     moduli needing more than `--max-points` ($10^5$) evaluations are skipped.
+
+  Any obstruction found is a proof, so these never mark a monogenic field -1 (checked on all the
+  monogenic fields in `data/`), but they can miss: some fields are not monogenic for global
+  reasons only, e.g. for cubic fields with $\lvert D \rvert \le 10^5$ they prove 3,863 of the
+  11,290 non-monogenic fields. For degree 3 and 4 use Magma or the Thue solver to settle the rest.
+
+| Degree | Status |
+|---|---|
+| all | polredabs roots that generate $\mathcal{O}_K$, from `--method polredabs` |
+| 2 | every LMFDB quadratic field (`--method polredabs`, or `generate_quadratic.py` for a range of $\lvert D \rvert$): every quadratic field is monogenic |
+| 3 | exact (Magma, or PARI Thue solver) |
+| 4 | exact with Magma, or with PARI (`--method factor`) |
+| $\ge 5$ | PARI brute force for 1, common index divisors and local obstructions for -1 |
+
+## Scripts
+
+```
+python3 scripts/generate_quadratic.py --max-disc 1000              # add quadratic fields to data/degree2.txt
+sage -python scripts/find_generators.py --degrees 2-47 --method polredabs   # every field whose polredabs root generates O_K
+sage -python scripts/find_generators.py --degrees 3 --max-disc 10^6  # LMFDB fields, Magma for degree <= 4
+sage -python scripts/find_generators.py --degrees 5 --method pari -B 4
+sage -python scripts/find_generators.py --degrees 3 --input fields.txt --print   # "label|[coeffs]" lines
+sage -python scripts/find_generators.py --degrees 3 --method thue --max-disc 10^5   # exact, no Magma
+sage -python scripts/find_generators.py --degrees 5-8 --method local --only-new  # prove the rest are not monogenic
+sage -python scripts/find_generators.py --degrees 4 --method factor --only-new   # exact, no Magma
+sage -python scripts/find_generators.py --degrees 6 --method pari --lmfdb-monogenic -B 4  # LMFDB says monogenic, no generator here yet
+sage -python scripts/run_jobs.py jobs.txt --parallel 4               # run the jobs in jobs.txt in parallel (see below)
+python3 scripts/merge.py rows.txt [--replace]                       # merge rows from a manual Magma run
+python3 scripts/check_data.py [--fix]                               # validate every data/degree<n>.txt
+python3 scripts/canonicalize.py --degrees 5-7                       # replace stored generators by the canonical ones
+sage -python scripts/check_data.py --source db --cross-check 2      # also against the LMFDB and the PARI search
+sage -python scripts/check_data.py --source db --reprove            # redo degrees 3, 4 exactly (Thue; --method factor, slow), proofs for -1 rows
+sage -python scripts/compare_lmfdb.py --write compare/              # compare with nf_fields.monogenic in the LMFDB (+ compare/monogenic_update.txt)
+sage -python scripts/check_lmfdb_zk.py --degrees 4 --write zk.txt      # check the LMFDB integral bases (zk, index)
+python3 scripts/export_lmfdb.py -o monogenic_coeffs.txt              # all monogenic = 1 rows in one file, label|monogenic_coeffs
+sage -python scripts/verify_export.py monogenic_coeffs.txt         # independent check of the export against the LMFDB
+python3 -m unittest discover tests                                  # run the tests (need cypari2)
+```
+
+`export_lmfdb.py` writes one file for the LMFDB editors with every field marked monogenic,
+header `label|monogenic_coeffs`, types `text|numeric[]`, a blank line, then the rows sorted by
+degree and then like the LMFDB (|disc|, signature, index). It needs only Python;
+`--degrees 2-4` restricts the degrees, and without `-o` it writes to standard output.
+
+`verify_export.py` checks such a file independently: it uses only Sage, none of the code in
+this repository. For each row it checks that f is monic, irreducible, of the degree in the
+label, that Q(alpha) is the LMFDB field (the LMFDB polynomial has a root in Q[x]/(f), found by
+PARI and checked exactly by Sage), and that disc(f) equals disc(K), both in the LMFDB and in
+the label. Since disc(f) = [O_K : Z[alpha]]^2 disc(K), this proves O_K = Z[alpha]. It reads the
+fields from the LMFDB (`lmfdb` or lmfdb-lite), or with `--fields` from a file of
+`label|[coeffs]` lines; `--no-fields` skips the isomorphism check. Every failing row is printed
+as `label|reason`. It takes about 3 hours for the whole export (mostly degrees 2-7, a few ms per
+field; about 1-3 s per field in degree 40-47); split the file to run it in parallel.
+
+`find_generators.py` reads the fields from the LMFDB database (the `lmfdb` package, or
+[lmfdb-lite](https://github.com/roed314/lmfdb-lite):
+`sage -pip install -U "lmfdb-lite[pgbinary] @ git+https://github.com/roed314/lmfdb-lite.git"`)
+and merges its results into `data/` every `--batch` fields. Runs can be split with `--shard i/k`
+or discriminant ranges and run in parallel; `--only-new` skips fields that already have a row.
+Each merge locks the data file (through `data/degree<n>.txt.lock`, with `flock`), so parallel
+runs on the same degree take turns instead of dropping each other's rows, and the file is
+rewritten atomically (a temporary file replaces it), so an interrupted run never leaves a
+truncated file.
+
+To run several jobs at once, e.g. the search in each degree with its own bound, list them in a
+jobs file, one per line (a script in `scripts/` and its arguments; `#` starts a comment), and
+run `scripts/run_jobs.py jobs.txt --parallel 4`. At most `--parallel` jobs run at a time, each
+writes its output to `logs/<n>-<script>-d<degrees>.log`, and a line is printed when each starts
+and finishes. `jobs.txt` is an example, with timings for choosing `-B` in each degree;
+`--dry-run` lists the jobs and their logs without running them.
+
+### Which generator is kept
+
+A field keeps one generator, the first in the canonical order above. When any method (or
+`merge.py`) produces a different generator for a field that already has one, the new one replaces
+it only if it comes first in that order, i.e. it is the polredabs root, or has smaller $T_2$ norm
+(then smaller $S(P)$), and it passes the independent check below. Each replacement is
+printed as `BETTER ...`. So a smaller generator from Magma or the Thue solver replaces one from the
+PARI search (made canonical as below unless that needs too many elements), but a later search never
+replaces a smaller one.
+`--replace` lets any checked generator replace the stored one. To bring the stored generators up to
+date after a change to the canonical order, rerun a method on just the fields whose generator is not
+the LMFDB polynomial, e.g. `find_generators.py --degrees 3 --method thue --recheck-generators`.
+
+### Proving a generator is canonical
+
+Given a generator $\alpha$ of $\mathcal{O}_K$, every generator $\beta$ with
+$T_2(\beta) \le T_2(\alpha)$ also has $Q(\beta) \le T_2(\alpha)$, where
+$Q(\beta) = T_2(\beta) - \operatorname{Tr}(\beta)^2/n = \min_{s \in \mathbb{R}} T_2(\beta + s)$ is a
+positive definite quadratic form on $\mathcal{O}_K/\mathbb{Z}$ (in the coordinates
+$x_2, \dots, x_n$ on the integral basis, since $\omega_1 = 1$). So `mono_canonical` in
+[`scripts/monogenic.gp`](scripts/monogenic.gp) lists all $x$ with $Q(x) \le T_2(\alpha)$ (`qfminim`,
+one of each pair $\pm x$), keeps those with $[\mathcal{O}_K : \mathbb{Z}[\alpha]] = 1$, replaces each
+by the best of $\pm\beta + k$ ($k \in \mathbb{Z}$, as `mono_normalize` does for every generator), and
+takes the first in the canonical order: that is the canonical generator, with a proof. If more than
+`--max-points` ($10^5$) elements would have to be checked, the generator is kept but reported as
+`NOT PROVED CANONICAL`. That happens for generators with huge coefficients (some cubic and
+quartic fields have only such generators), where `canonicalize.py` uses the exact methods instead;
+on samples of 40 fields in each degree 5-12 it never happened (10 to 14,000 elements, at most
+1.4 s per field).
+
+The PARI search does this for every generator it finds. For the stored generators,
+`canonicalize.py --degrees 5-7` does it offline (the stored generator defines the field, so
+the LMFDB is not needed) and merges any better generator as usual (`BETTER ...`), and
+`check_data.py --canonical` reports stored generators that are not canonical. Rows from Magma,
+the Thue solver and `--method factor` are canonical already, since those find every generator.
+
+### Conflicts: a generator always beats -1
+
+Magma's `IndexFormEquation` (or any of the methods here) could have a bug and wrongly say a field
+is not monogenic, but a generator is a certificate that anyone can check. So whenever a new row
+says 1 and the stored row says -1, or the other way round, the merge (`find_generators.py` with
+any method, and `merge.py`) checks the generator independently, with or without `--replace`: PARI
+computes the ring of integers of the field it defines (`nfdisc`, factoring the discriminant
+completely) and checks that $[\mathcal{O}_K : \mathbb{Z}[\alpha]] = 1$ and that the discriminant
+matches the label. If it passes, the 1 row is written or kept; otherwise the -1 row is. Either way
+the conflict is printed as `CONFLICT ...` and appended to `conflicts.txt`, with the time, both rows
+and the command that produced the new one, so it can be reported (e.g. to Magma) or looked at
+again. To search again for generators of every field marked -1:
+
+```
+sage -python scripts/find_generators.py --degrees 3-4 --method pari --recheck-negative -B 4
+```
+
+`check_data.py --cross-check B` does the same search but only reports, without changing `data/`.
+
+## Comparing with the LMFDB
+
+The LMFDB table `nf_fields` has its own `monogenic` column, with the same values (1, -1, 0, and
+also null, treated as 0). `scripts/compare_lmfdb.py` compares it with `data/` and prints, for each
+degree, how many fields each side marks 1 and -1, how many agree, and
+
+* **conflicts**: one side says 1 and the other -1. If ours is 1, the stored `monogenic_coeffs` (checked by
+  `check_data.py`) is a generator, so the LMFDB value is wrong; if ours is -1, one of the proofs
+  needs a second look. The script exits with status 1 if there are any;
+* fields where only we know the answer (an update for the LMFDB), and fields where only the LMFDB
+  does (still to do here).
+
+`--write DIR` writes the full lists: `conflicts.txt`, `ours_only.txt` (`label|monogenic`),
+`lmfdb_only_yes.txt` and `lmfdb_only_no.txt` (`label|[coeffs]`, ready for
+`find_generators.py --input`) and `unexpected.txt` (LMFDB values other than 1, -1, 0, null).
+`--lmfdb FILE` reads `label|monogenic` lines from a file instead of the database. `--min-disc` and
+`--max-disc` (e.g. `--degrees 6 --max-disc 10^4`) compare only the fields with $\lvert D \rvert$ in
+that range, on both sides, for degrees with millions of fields.
+
+To run the search on just the fields the LMFDB says are monogenic but that have no generator
+here yet (no row, or a row marked 0 or -1), straight from the database:
+
+```
+sage -python scripts/find_generators.py --degrees 6 --method pari --lmfdb-monogenic -B 4
+```
+
+This adds `monogenic = 1` to the `nf_fields` query and skips the fields already marked 1. A field
+marked -1 here is a conflict with the LMFDB; if the search finds a generator it is verified and
+replaces the -1 as above (add `--only-new` to leave those fields out).
+
+### Checking the LMFDB integral bases
+
+`scripts/check_lmfdb_zk.py` checks the integral basis `zk` (in `nf_fields_extra`) and the
+`index` column (in `nf_fields`) of each LMFDB field. For the LMFDB polynomial $f$ and $D$ the discriminant in the label, the stored
+$b_1, \dots, b_n$ (polynomials in $a$) are a basis of $\mathcal{O}_K$ iff they are linearly
+independent algebraic integers (each characteristic polynomial is in $\mathbb{Z}[x]$) spanning a
+lattice of discriminant $\det(B)^2 \operatorname{disc}(f) = D$. All exact, without computing
+$\mathcal{O}_K$, so it is fast (well under a millisecond per small field). `--nfdisc` also checks
+$D$ against PARI's `nfdisc` (slow for large discriminants). E.g. a stored basis $1, a, a^2, a^3$
+for 4.0.19982592.7 ($f = x^4 + 252x^2 + 8673$) is reported, since $\operatorname{disc}(f) = 2401^2 D$:
+it misses $(a^2 + 126)/49 = \sqrt 3$.
+
+The `index` column is the index of the field, $i(K) = \gcd [\mathcal{O}_K : \mathbb{Z}[\alpha]]$
+over all $\alpha \in \mathcal{O}_K$ with $K = \mathbb{Q}(\alpha)$, so $i(K) = 1$ does not mean that
+$K$ is monogenic (4.0.19982592.7 has index 1 but is not monogenic). The primes dividing $i(K)$ are
+the common index divisors, all $< n$, which Hensel's criterion reads off the splitting of $p$ in
+$K$. The script checks that the primes dividing `index` are exactly these, and that `index` divides
+$[\mathcal{O}_K : \mathbb{Z}[a]] = \sqrt{\operatorname{disc}(f)/D}$ (the exact power of each prime
+is not checked).
+
+```
+sage -python scripts/check_lmfdb_zk.py --degrees 4 --max-disc 10^6
+sage -python scripts/check_lmfdb_zk.py --degrees 2-47 --write zk_problems.txt   # label|kind|message
+python3 scripts/check_lmfdb_zk.py --input fields.txt    # label|[coeffs]|["1","a",...]|index lines
+```
+
+Each problem has a kind: `format`, `dependent`, `not_integral`, `disc` (not all of
+$\mathcal{O}_K$, with its index when the elements are integral), `index`, `nfdisc`. The exit
+status is 1 if there is any. `--shard i/k` splits a run.
