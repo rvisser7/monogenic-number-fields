@@ -59,7 +59,6 @@ find_generators.py --degrees 22 --method pari -B 0 --batch 1 --only-new --min-di
 find_generators.py --degrees 23 --method pari -B 0 --batch 1 --only-new --min-disc 6240075998357504893034470830173607328521013790939800051746092001197547889159534823411058926420996301878725656074585125281486375859180395788016795103789056
 find_generators.py --degrees 24 --method pari -B 0 --batch 1 --only-new --min-disc 2972921368835075890250776576
 find_generators.py --degrees 25 --method pari -B 0 --batch 1 --only-new --min-disc 1490116119384765545503152796609155866558464
-find_generators.py --degrees 25 --method pari -B 0 --batch 1 --only-new
 find_generators.py --degrees 26 --method pari -B 0 --batch 1 --only-new
 find_generators.py --degrees 27 --method pari -B 0 --batch 1 --only-new
 find_generators.py --degrees 28 --method pari -B 0 --batch 1 --only-new
