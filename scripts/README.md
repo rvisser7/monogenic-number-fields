@@ -132,6 +132,7 @@ sage -python scripts/check_data.py --source db --cross-check 2      # also again
 sage -python scripts/check_data.py --source db --reprove            # redo degrees 3, 4 exactly (Thue; --method factor, slow), proofs for -1 rows
 sage -python scripts/compare_lmfdb.py --write compare/              # compare with nf_fields.monogenic in the LMFDB (+ compare/monogenic_update.txt)
 sage -python scripts/check_lmfdb_zk.py --degrees 4 --write zk.txt      # check the LMFDB integral bases (zk, index)
+sage -python scripts/check_lmfdb_inessential.py --degrees 2-47 --write inessential.txt   # check the LMFDB inessential primes
 python3 scripts/export_lmfdb.py -o monogenic_coeffs.txt              # all monogenic = 1 rows in one file, label|monogenic_coeffs
 sage -python scripts/verify_export.py monogenic_coeffs.txt         # independent check of the export against the LMFDB
 python3 -m unittest discover tests                                  # run the tests (need cypari2)
@@ -283,3 +284,29 @@ python3 scripts/check_lmfdb_zk.py --input fields.txt    # label|[coeffs]|["1","a
 Each problem has a kind: `format`, `dependent`, `not_integral`, `disc` (not all of
 $\mathcal{O}_K$, with its index when the elements are integral), `index`, `nfdisc`. The exit
 status is 1 if there is any. `--shard i/k` splits a run.
+
+### Checking the LMFDB inessential primes
+
+`scripts/check_lmfdb_inessential.py` checks the `inessentialp` column of `nf_fields`: the
+inessential primes of $K$ (the common index divisors), i.e. the primes dividing the index of the
+field $i(K)$. It recomputes them with Hensel's criterion: $p \mid i(K)$ iff, for some $f$, more
+primes of $K$ above $p$ have residue degree $f$ than there are monic irreducible polynomials of
+degree $f$ over $\mathbb{F}_p$, which is $\frac{1}{f} \sum_{d \mid f} \mu(d) p^{f/d}$. The
+residue degrees come from `idealprimedec` on an order that is maximal at the primes $p < n$
+(only these can be inessential), so it does not factor the discriminant: well under a millisecond
+per field in degree $\le 6$ and about 0.08 s in degree 47. E.g. 2 is inessential in 3.3.961.1,
+where 2 splits completely and there are only 2 linear polynomials over $\mathbb{F}_2$.
+
+It reports, by kind: `inessentialp` (the stored primes are wrong), `missing` (null, shown as "Not
+computed" on the LMFDB), `index` (the primes of the `index` column are not the inessential primes,
+or `index` does not divide $[\mathcal{O}_K : \mathbb{Z}[a]]$), `monogenic` (the LMFDB says
+monogenic, which is impossible with an inessential prime) and `ours` (the same for our
+`data/degree<n>.txt`; skip with `--no-data`). With `--update FILE` it writes the right value for
+every wrong or missing one, header `label|inessentialp`, types `text|integer[]`, for the LMFDB
+editors.
+
+```
+sage -python scripts/check_lmfdb_inessential.py --degrees 3-8 --max-disc 10^6
+sage -python scripts/check_lmfdb_inessential.py --degrees 2-47 --write inessential.txt --update inessential_update.txt
+python3 scripts/check_lmfdb_inessential.py --input fields.txt    # label|[coeffs]|[2]|index|monogenic lines
+```
