@@ -52,11 +52,11 @@ find_generators.py --degrees 15 --method pari -B 0 --batch 1 --only-new --min-di
 find_generators.py --degrees 16 --method pari -B 0 --batch 1 --only-new --min-disc 5068408891191791616
 #find_generators.py --degrees 17 --method pari -B 0 --batch 1 --only-new --min-disc 8972555039016074378226050552414591426720707963201   # degree 17 is done! (at least for -B 0)
 find_generators.py --degrees 18 --method pari -B 0 --batch 1 --only-new --min-disc 1114072389118674940412779
-find_generators.py --degrees 19 --method pari -B 0 --batch 1 --only-new --min-disc 1580770532156861979997149793605296459437459
+#find_generators.py --degrees 19 --method pari -B 0 --batch 1 --only-new --min-disc 1580770532156861979997149793605296459437459  # degree 19 is done!  (at least for -B 0)
 find_generators.py --degrees 20 --method pari -B 0 --batch 1 --only-new --min-disc 249238158195972964709564416
-find_generators.py --degrees 21 --method pari -B 0 --batch 1 --only-new --min-disc 48525234193217592124669708856721937273913509863337974439953042286754145000000000000000000
+#find_generators.py --degrees 21 --method pari -B 0 --batch 1 --only-new --min-disc 48525234193217592124669708856721937273913509863337974439953042286754145000000000000000000  # degree 21 is done! (at least for -B 0)
 find_generators.py --degrees 22 --method pari -B 0 --batch 1 --only-new --min-disc 61415850852267200397515695951218522185201753278017240901376750286638166845798793940070572804439992043594317824
-find_generators.py --degrees 23 --method pari -B 0 --batch 1 --only-new --min-disc 6240075998357504893034470830173607328521013790939800051746092001197547889159534823411058926420996301878725656074585125281486375859180395788016795103789056
+#find_generators.py --degrees 23 --method pari -B 0 --batch 1 --only-new --min-disc 6240075998357504893034470830173607328521013790939800051746092001197547889159534823411058926420996301878725656074585125281486375859180395788016795103789056  # degree 23 is done! (at least for -B 0)
 find_generators.py --degrees 24 --method pari -B 0 --batch 1 --only-new --min-disc 2972921368835075890250776576
 find_generators.py --degrees 25 --method pari -B 0 --batch 1 --only-new --min-disc 1490116119384765545503152796609155866558464
 find_generators.py --degrees 26 --method pari -B 0 --batch 1 --only-new
