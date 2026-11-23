@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
-"""Check the inessential primes (nf_fields.inessentialp) stored in the LMFDB.
+"""Check the inessential primes (nf_fields.inessentialp) and the index (nf_fields.index)
+stored in the LMFDB.
 
 The inessential primes of a number field K (also called common index divisors) are the
 primes p that divide [O_K : Z[alpha]] for every alpha in O_K with K = Q(alpha), i.e. the
@@ -19,9 +20,17 @@ are only 2 linear polynomials over F_2.
 For each field it checks:
   * inessentialp is the set of primes computed as above (kind `inessentialp`), or reports
     that it is missing (kind `missing`, null in the LMFDB, shown there as "Not computed");
-  * the primes dividing the `index` column are the same primes, and `index` divides
-    [O_K : Z[a]] = sqrt(disc(f) / disc(K)) for the LMFDB polynomial f (kind `index`; the
-    exact power of each prime is not checked);
+  * the `index` column is the index of the field i(K), computed exactly (kind `index`,
+    or `index_missing` if it is null). i(K) is the product of p^v_p(i(K)) over the
+    inessential p, and v_p(i(K)) = min v_p [O_K : Z[alpha]] is found by an exact search
+    over the alpha mod p^k O_K (mono_field_index in monogenic.gp, which explains why the
+    search finds the minimum and stops): a branch and bound over O_K / p^k O_K, and if
+    that is too big, the same search split up by the primes above p, with a closed form
+    for the unramified ones. If a field needs more than --max-classes classes, the search
+    gives up with bounds lo <= v_p(i(K)) <= hi; then the `index` column is only checked
+    against the bounds, its primes and [O_K : Z[a]] = sqrt(disc(f) / disc(K)) (which it
+    must divide), and an index within the bounds is reported as `index_undecided` (not
+    counted as a problem). --no-exact-index skips the search and only does these checks;
   * a field with an inessential prime is not monogenic, so neither the LMFDB `monogenic`
     column (kind `monogenic`) nor our data/degree<n>.txt (kind `ours`, unless --no-data)
     may say 1 for it. Every row with 1 in data/ has a verified generator, so `ours` would
@@ -39,11 +48,15 @@ Header lines are skipped.
 Each problem is printed as "label: ..." (at most --show per degree) and, with --write FILE,
 written as label|kind|message. With --update FILE, the computed inessentialp of every field
 where the LMFDB value is wrong or missing goes to FILE, for the LMFDB editors, with header
-label|inessentialp, text|integer[]. The exit status is 1 if there is a problem.
+label|inessentialp, text|integer[]. With --index-update FILE, the exact index of every
+field where the index column is wrong or missing goes to FILE, with header label|index,
+text|integer (the --write file has both values). The exit status is 1 if there is a
+problem.
 
 Usage:
     sage -python scripts/check_lmfdb_inessential.py --degrees 3-8 --max-disc 10^6
     sage -python scripts/check_lmfdb_inessential.py --degrees 2-47 --write inessential.txt --update inessential_update.txt
+    sage -python scripts/check_lmfdb_inessential.py --degrees 2-47 --index-update index_update.txt
     sage -python scripts/check_lmfdb_inessential.py --degrees 6 --shard 0/4    # and 1/4, ...
     python3 scripts/check_lmfdb_inessential.py --input nf_fields_inessential.txt
 """
@@ -57,7 +70,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from compare_lmfdb import DiscRange, Log, parse_degrees, parse_int
 from monogenic import NULL, data_path, label_disc, label_key, parse_coeffs, pari, read_data
 
-KINDS = ["missing", "inessentialp", "index", "monogenic", "ours"]
+KINDS = ["missing", "inessentialp", "index", "index_missing", "index_undecided", "monogenic", "ours"]
 
 
 def mobius(n):
@@ -77,19 +90,37 @@ def n_irreducible(p, f):
     return sum(mobius(d) * p ** (f // d) for d in range(1, f + 1) if f % d == 0) // f
 
 
-def inessential_primes(coeffs):
-    """The inessential primes (common index divisors) of K = Q[x]/(f), f given by its
-    ascending coeffs, by Hensel's criterion (see the top of this file)."""
+def _field(coeffs):
+    """(inessential primes, nf maximal at the primes < n) of K = Q[x]/(f)."""
     n = len(coeffs) - 1
     ps = [int(p) for p in pari.primes([2, n - 1])] if n > 2 else []
     if not ps:
-        return []
+        return [], None
     nf = pari.nfinit([pari.Polrev(coeffs), ps])  # maximal at the primes in ps
     out = []
     for p in ps:
         degrees = Counter(int(P[3]) for P in pari.idealprimedec(nf, p))  # P[3] = P.f
         if any(k > n_irreducible(p, f) for f, k in degrees.items()):
             out.append(p)
+    return out, nf
+
+
+def inessential_primes(coeffs):
+    """The inessential primes (common index divisors) of K = Q[x]/(f), f given by its
+    ascending coeffs, by Hensel's criterion (see the top of this file)."""
+    return _field(coeffs)[0]
+
+
+def field_index(coeffs, maxcls=2 * 10**4, field=None):
+    """The index i(K) of K = Q[x]/(f), prime by prime: [(p, v, lo)] for the inessential
+    primes p, with v = v_p(i(K)) and lo = v if it is exact, otherwise lo <= v_p(i(K)) <= v
+    (the search gave up after maxcls classes; see mono_field_index in monogenic.gp)."""
+    cid, nf = field or _field(coeffs)
+    out = []
+    for p in cid:
+        r = pari("mono_field_index")(nf, p, maxcls)
+        v = int(r[0])
+        out.append((p, v, v if int(r[1]) else max(1, int(r[2]))))
     return out
 
 
@@ -107,12 +138,15 @@ def fmt(primes):
     return "{%s}" % ", ".join(map(str, primes)) if primes else "none"
 
 
-def check_field(label, coeffs, inessentialp, index=None, monogenic=None, ours=None):
-    """(problems, computed): problems [(kind, message)] with the LMFDB columns of the
-    field with this label and polynomial (ascending coeffs), computed its inessential
-    primes. inessentialp as stored (see parse_primes), index and monogenic the LMFDB
-    values or None, ours our monogenic value (data/) or None."""
-    cid = inessential_primes(coeffs)
+def check_field(label, coeffs, inessentialp, index=None, monogenic=None, ours=None,
+                exact_index=True, maxcls=2 * 10**4):
+    """(problems, cid, idx): problems [(kind, message)] with the LMFDB columns of the field
+    with this label and polynomial (ascending coeffs), cid its inessential primes, idx
+    its index i(K) if exact_index and it was decided, else None. inessentialp as stored
+    (see parse_primes), index and monogenic the LMFDB values or None, ours our monogenic
+    value (data/) or None."""
+    field = _field(coeffs)
+    cid = field[0]
     out = []
     stored = parse_primes(inessentialp)
     if stored is None:
@@ -120,27 +154,50 @@ def check_field(label, coeffs, inessentialp, index=None, monogenic=None, ours=No
     elif stored != cid:
         out.append(("inessentialp", "inessentialp is %s, but the inessential primes are %s"
                     % (fmt(stored), fmt(cid))))
-    if index is not None:
+    idx = None
+    if exact_index:
+        parts = field_index(coeffs, maxcls, field)
+        if all(v == lo for _, v, lo in parts):
+            idx = 1
+            for p, v, _ in parts:
+                idx *= p ** v
+    if index is None:
+        if idx is not None:
+            out.append(("index_missing", "the index column is not computed; it should be %d" % idx))
+    elif int(index) < 1:
+        out.append(("index", "the index column is %s, not a positive integer" % index))
+    elif idx is not None:
+        if int(index) != idx:
+            out.append(("index", "the index column is %s, but the index of the field is %d" % (index, idx)))
+    else:
         index = int(index)
-        if index < 1:
-            out.append(("index", "the index column is %d, not a positive integer" % index))
-        else:
-            primes = [int(p) for p in pari.factor(index)[0]] if index > 1 else []
-            if primes != cid:
-                out.append(("index", "the index column is %d, but the inessential primes are %s"
-                            % (index, fmt(cid))))
-            f, D = pari.Polrev(coeffs), label_disc(label)
-            q = pari.poldisc(f) / D
-            if q.type() == "t_INT" and pari.issquare(q) and int(pari.sqrtint(q)) % index != 0:
-                out.append(("index", "the index column is %d, which does not divide [O_K : Z[a]] = %s"
-                            % (index, pari.sqrtint(q))))
+        primes = [int(p) for p in pari.factor(index)[0]] if index > 1 else []
+        if primes != cid:
+            out.append(("index", "the index column is %d, but the inessential primes are %s"
+                        % (index, fmt(cid))))
+        elif exact_index:
+            v = {p: int(pari.valuation(index, p)) for p in cid}
+            bad = ["%d^%d" % (p, v[p]) for p, hi, lo in parts if not lo <= v[p] <= hi]
+            ranges = ", ".join("v_%d = %d" % (p, hi) if hi == lo else "%d <= v_%d <= %d" % (lo, p, hi)
+                               for p, hi, lo in parts)
+            if bad:
+                out.append(("index", "the index column is %d, but the index of the field has %s"
+                            % (index, ranges)))
+            else:
+                out.append(("index_undecided", "the index column is %d; the search gave up with %s"
+                            % (index, ranges)))
+        f, D = pari.Polrev(coeffs), label_disc(label)
+        q = pari.poldisc(f) / D
+        if q.type() == "t_INT" and pari.issquare(q) and int(pari.sqrtint(q)) % index != 0:
+            out.append(("index", "the index column is %d, which does not divide [O_K : Z[a]] = %s"
+                        % (index, pari.sqrtint(q))))
     if cid and monogenic is not None and int(monogenic) == 1:
         out.append(("monogenic", "the LMFDB says monogenic, but %s %s inessential"
                     % (fmt(cid), "is" if len(cid) == 1 else "are")))
     if cid and ours == 1:
         out.append(("ours", "data/ says monogenic, but %s %s inessential"
                     % (fmt(cid), "is" if len(cid) == 1 else "are")))
-    return out, cid
+    return out, cid, idx
 
 
 def get_db():
@@ -205,6 +262,12 @@ def main():
     parser.add_argument("--write", metavar="FILE", help="write every problem to FILE (label|kind|message)")
     parser.add_argument("--update", metavar="FILE",
                         help="write label|inessentialp with the right value for every wrong or missing one")
+    parser.add_argument("--index-update", metavar="FILE",
+                        help="write label|index with the exact index of every field where the index column is wrong or missing")
+    parser.add_argument("--no-exact-index", action="store_true",
+                        help="do not compute the index of the field exactly (only check its primes)")
+    parser.add_argument("--max-classes", type=parse_int, default=2 * 10**4, metavar="N",
+                        help="give up on the exact index of a field after about N classes (default 2*10^4)")
     parser.add_argument("--progress-every", type=float, default=30, metavar="SECONDS",
                         help="print progress this often (default 30)")
     parser.add_argument("-q", "--quiet", action="store_true", help="no progress lines")
@@ -220,6 +283,9 @@ def main():
     update = open(args.update, "w") if args.update else None
     if update:
         update.write("label|inessentialp\ntext|integer[]\n\n")
+    index_update = open(args.index_update, "w") if args.index_update else None
+    if index_update:
+        index_update.write("label|index\ntext|integer\n\n")
     any_problem = False
     for n in (sorted(from_file) if from_file is not None else degrees):
         rows = from_file[n] if from_file is not None else db_fields(n, disc, log, shard)
@@ -227,9 +293,10 @@ def main():
         checked, kinds, bad, shown, with_cid = 0, Counter(), 0, 0, 0
         for label, coeffs, inessentialp, index, mono in rows:
             checked += 1
-            problems, cid = check_field(label, coeffs, inessentialp, index, mono, ours.get(label))
+            problems, cid, idx = check_field(label, coeffs, inessentialp, index, mono, ours.get(label),
+                                             not args.no_exact_index, args.max_classes)
             with_cid += bool(cid)
-            if problems:
+            if any(kind != "index_undecided" for kind, _ in problems):
                 bad += 1
                 any_problem = True
             for kind, msg in problems:
@@ -241,11 +308,13 @@ def main():
                     out.write("%s|%s|%s\n" % (label, kind, msg))
             if update and any(kind in ("missing", "inessentialp") for kind, _ in problems):
                 update.write("%s|[%s]\n" % (label, ",".join(map(str, cid))))
+            if index_update and idx is not None and any(kind in ("index", "index_missing") for kind, _ in problems):
+                index_update.write("%s|%d\n" % (label, idx))
             log.tick("degree %d: %d fields checked, %d with problems" % (n, checked, bad))
         print("degree %d: %d fields checked, %d with inessential primes, %d with problems%s"
               % (n, checked, with_cid, bad, "".join("; %d %s" % (kinds[k], k) for k in KINDS if kinds[k])),
               flush=True)
-    for fh in (out, update):
+    for fh in (out, update, index_update):
         if fh:
             fh.close()
     sys.exit(1 if any_problem else 0)

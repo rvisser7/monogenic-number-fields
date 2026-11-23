@@ -132,7 +132,7 @@ sage -python scripts/check_data.py --source db --cross-check 2      # also again
 sage -python scripts/check_data.py --source db --reprove            # redo degrees 3, 4 exactly (Thue; --method factor, slow), proofs for -1 rows
 sage -python scripts/compare_lmfdb.py --write compare/              # compare with nf_fields.monogenic in the LMFDB (+ compare/monogenic_update.txt)
 sage -python scripts/check_lmfdb_zk.py --degrees 4 --write zk.txt      # check the LMFDB integral bases (zk, index)
-sage -python scripts/check_lmfdb_inessential.py --degrees 2-47 --write inessential.txt   # check the LMFDB inessential primes
+sage -python scripts/check_lmfdb_inessential.py --degrees 2-47 --write inessential.txt   # check the LMFDB inessential primes and index
 python3 scripts/export_lmfdb.py -o monogenic_coeffs.txt              # all monogenic = 1 rows in one file, label|monogenic_coeffs
 sage -python scripts/verify_export.py monogenic_coeffs.txt         # independent check of the export against the LMFDB
 python3 -m unittest discover tests                                  # run the tests (need cypari2)
@@ -285,28 +285,55 @@ Each problem has a kind: `format`, `dependent`, `not_integral`, `disc` (not all 
 $\mathcal{O}_K$, with its index when the elements are integral), `index`, `nfdisc`. The exit
 status is 1 if there is any. `--shard i/k` splits a run.
 
-### Checking the LMFDB inessential primes
+### Checking the LMFDB inessential primes and index
 
-`scripts/check_lmfdb_inessential.py` checks the `inessentialp` column of `nf_fields`: the
-inessential primes of $K$ (the common index divisors), i.e. the primes dividing the index of the
-field $i(K)$. It recomputes them with Hensel's criterion: $p \mid i(K)$ iff, for some $f$, more
-primes of $K$ above $p$ have residue degree $f$ than there are monic irreducible polynomials of
-degree $f$ over $\mathbb{F}_p$, which is $\frac{1}{f} \sum_{d \mid f} \mu(d) p^{f/d}$. The
-residue degrees come from `idealprimedec` on an order that is maximal at the primes $p < n$
-(only these can be inessential), so it does not factor the discriminant: well under a millisecond
-per field in degree $\le 6$ and about 0.08 s in degree 47. E.g. 2 is inessential in 3.3.961.1,
-where 2 splits completely and there are only 2 linear polynomials over $\mathbb{F}_2$.
+`scripts/check_lmfdb_inessential.py` checks the `inessentialp` and `index` columns of
+`nf_fields`. The inessential primes of $K$ (the common index divisors) are the primes dividing
+the index of the field $i(K) = \gcd [\mathcal{O}_K : \mathbb{Z}[\alpha]]$. It recomputes them
+with Hensel's criterion: $p \mid i(K)$ iff, for some $f$, more primes of $K$ above $p$ have
+residue degree $f$ than there are monic irreducible polynomials of degree $f$ over
+$\mathbb{F}_p$, which is $\frac{1}{f} \sum_{d \mid f} \mu(d) p^{f/d}$. The residue degrees come
+from `idealprimedec` on an order that is maximal at the primes $p < n$ (only these can be
+inessential), so it does not factor the discriminant. E.g. 2 is inessential in 3.3.961.1, where 2
+splits completely and there are only 2 linear polynomials over $\mathbb{F}_2$.
+
+The index itself, $i(K) = \prod p^{v_p}$ over the inessential $p$ with
+$v_p = \min_\alpha v_p [\mathcal{O}_K : \mathbb{Z}[\alpha]]$, is computed exactly by a search
+(`mono_field_index` in `monogenic.gp`). With $\mathfrak{r}$ the product of the primes above
+$p$ and $L(\alpha, I) = v_p [\mathcal{O}_K : \mathbb{Z}_p[\alpha] + I]$, every
+$\beta \equiv \alpha \bmod I$ has index at least $L(\alpha, I)$, and if
+$v_p [\mathcal{O}_K : \mathbb{Z}[\alpha]] = w$ and $I \subseteq p^{w+1} \mathcal{O}_K$ then every
+such $\beta$ has $\mathbb{Z}_p[\beta] = \mathbb{Z}_p[\alpha]$ (Nakayama). So a branch and bound
+over the classes mod $\mathfrak{r}, \mathfrak{r}^2, \dots$, refining a class only while its bound
+is below the best index found (at first from the LMFDB polynomial and 200 random elements), finds the
+minimum and stops. If that needs too many classes, it splits the problem up by the primes $P$ above $p$: the
+index is a sum over the groups of $P$ where $\alpha \bmod P$ has the same minimal polynomial
+$\phi$ over $\mathbb{F}_p$, so $v_p$ is a minimum over the ways to give each $P$ a $\phi$
+(a dynamic program), with the same search inside each group, and a closed form when the group
+is unramified with $\deg \phi = f_P$. Checks, on fields from `nflist`: the two searches agree
+on about 1,000 inessential primes of fields of degree 3 to 6, no random element has a smaller
+index (also on 400 more in degree 5 to 7), and e.g. a field of degree 16 where 2 splits completely gets $v_2 = 88$ (the
+smallest $\sum_{i<j} v_2(x_i - x_j)$ over 16 distinct 2-adic integers, as it should). A field with
+inessential primes takes milliseconds in degree $\le 6$, up to about a second in degree 7
+(D7 fields where 2 or 3 ramifies) and under a second for the highly split fields of degree 8 to
+16 tried. After about `--max-classes` classes ($2 \cdot 10^4$, a few seconds) the search gives
+up with bounds (e.g. for a degree 16 field where 3 has 8 primes of degree 2: $1 \le v_3 \le 7$),
+the field is reported as `index_undecided` if the `index` column is within them, and only its
+primes and $\text{index} \mid [\mathcal{O}_K : \mathbb{Z}[a]]$ are checked.
 
 It reports, by kind: `inessentialp` (the stored primes are wrong), `missing` (null, shown as "Not
-computed" on the LMFDB), `index` (the primes of the `index` column are not the inessential primes,
-or `index` does not divide $[\mathcal{O}_K : \mathbb{Z}[a]]$), `monogenic` (the LMFDB says
-monogenic, which is impossible with an inessential prime) and `ours` (the same for our
-`data/degree<n>.txt`; skip with `--no-data`). With `--update FILE` it writes the right value for
-every wrong or missing one, header `label|inessentialp`, types `text|integer[]`, for the LMFDB
-editors.
+computed" on the LMFDB), `index` (the `index` column is not $i(K)$), `index_missing`,
+`index_undecided` (not counted as a problem), `monogenic` (the LMFDB says monogenic, which is
+impossible with an inessential prime) and `ours` (the same for our `data/degree<n>.txt`; skip
+with `--no-data`). With `--update FILE` it writes the right `inessentialp` for every wrong or
+missing one, header `label|inessentialp`, types `text|integer[]`, and with
+`--index-update FILE` the right index for every wrong or missing one, header `label|index`,
+types `text|integer`, for the LMFDB editors (`--write FILE` has every problem with both values).
+`--no-exact-index` skips the search.
 
 ```
 sage -python scripts/check_lmfdb_inessential.py --degrees 3-8 --max-disc 10^6
 sage -python scripts/check_lmfdb_inessential.py --degrees 2-47 --write inessential.txt --update inessential_update.txt
+sage -python scripts/check_lmfdb_inessential.py --degrees 2-47 --index-update index_update.txt
 python3 scripts/check_lmfdb_inessential.py --input fields.txt    # label|[coeffs]|[2]|index|monogenic lines
 ```

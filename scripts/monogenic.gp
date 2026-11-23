@@ -284,6 +284,287 @@ mono_common_index_divisors(nf) =
   Vec(res);
 }
 
+\\ The exact index of the field at p: v_p(i(K)), i(K) = gcd of [O_K : Z[a]] over all a in
+\\ O_K with K = Q(a), for nf maximal at p (e.g. nfinit([f, [p]])). Let rad be the product
+\\ of the primes P above p, I_j = rad^j, and for an ideal I
+\\ L(a, I) = v_p [O_K : Z_p[a] + I]. Then
+\\  * L(a, I) only depends on a mod I, and L(a, I) <= v_p [O_K : Z[b]] for every
+\\    b = a mod I (since Z_p[b] + I = Z_p[a] + I): a lower bound for the whole class;
+\\  * if w = v_p [O_K : Z[a]] then p^w O_K lies in Z_p[a], so L(a, p^k O_K) = w for
+\\    k > w, and if I lies in p^(w+1) O_K (I_j does once j >= e (w + 1), e the largest
+\\    ramification index) every b = a mod I has Z_p[b] = Z_p[a] (b = a + p c with c in
+\\    Z_p[a], and Nakayama), so the same index.
+\\ So with U = the smallest index found so far (at first: the root of nf.pol, and 200
+\\ random small elements), a depth-first search over the classes mod I_1, I_2, ... that
+\\ only refines a class while its bound is < U finds an a of the smallest index: any a with
+\\ index w < U has bound < U in every class it lies in, so its class mod I_j with
+\\ j = e (w + 1) is reached, and the representative of that class has index w. The
+\\ classes mod I_1 are taken up to a -> u a + t (u, t in Z, p not | u), which does not
+\\ change the p-part of the index. Returns [v, 1], or [U, 0, lo] with lo <= v <= U if
+\\ more than maxcls classes would be needed. This searches O_K as a whole, so the
+\\ number of classes grows with the degree; mono_field_index_p below splits it up by the
+\\ primes above p (and the tests check that the two agree).
+\\ (mono_index_bound: L(a, p^k O_K), with a = w on nf.zk and T = mono_multables(nf).)
+mono_index_bound(T, w, p, k) =
+{
+  my(n = #T, q = p^k, A = sum(i = 2, n, w[i] * T[i]) % q, M = matrix(n, n), v = vectorv(n, i, i == 1));
+  for (j = 1, n, M[, j] = v; if (j < n, v = (A * v) % q));
+  M = mathnfmodid(M, q);
+  valuation(prod(i = 1, n, M[i, i]), p);
+}
+
+mono_field_index_global(nf, p, maxcls = 10^6) =
+{
+  my(n = poldegree(nf.pol), T, U, st = List(), cnt = 0, e, w, j, r, b, dec, emax, emin, rad, H, Q, prec);
+  U = (valuation(poldisc(nf.pol), p) - valuation(nf.disc, p)) / 2;
+  if (U == 0, return([0, 1]));
+  dec = idealprimedec(nf, p);
+  emax = vecmax([P.e | P <- dec]); emin = vecmin([P.e | P <- dec]);
+  T = mono_multables(nf);
+  \\ a quick upper bound first, from some random small elements (the search is exact
+  \\ whatever U it starts with, but a small U prunes much more)
+  my(seed = getrand());
+  setrand(1);
+  for (i = 1, 200, my(r0 = mono_index_bound(T, concat([0], vector(n - 1, k, random(5) - 2))~, p, U)); if (r0 < U, U = r0));
+  setrand(seed);
+  \\ the ideals I_j = rad^j (rad = the product of the P), as HNF matrices, and bases of
+  \\ I_j / I_(j+1) (an F_p-space, since p I_j is in I_(j+1)), for j <= emax U
+  rad = idealhnf(nf, idealfactorback(nf, dec));
+  H = vector(emax * U + 2); H[1] = matid(n);
+  for (k = 2, #H, H[k] = idealmul(nf, H[k - 1], rad));
+  Q = vector(emax * U + 1, k,
+    my(W = Mod(H[k]^-1 * H[k + 1], p), B = if (k == 1, Mat(matid(n)[, 1]), matrix(n, 0)), C);
+    for (i = 1, n, C = concat(Mod(B, p), Mod(matid(n)[, i], p));
+      if (matrank(concat(W, C)) > matrank(concat(W, Mod(B, p))), B = concat(B, matid(n)[, i])));
+    H[k] * B);
+  \\ level 1: the classes mod rad, on a basis of O_K / rad that starts with 1, up to
+  \\ a -> u a + t (u, t in Z, p not | u): no 1 component, first nonzero coordinate 1 (or
+  \\ a = 0 mod rad, which is not the same as a in p O_K if p ramifies)
+  my(B1 = Q[1], m = #B1);
+  if ((p^(m - 1) - 1) / (p - 1) > maxcls, return([U, 0, 0]));
+  forvec (x = vector(m - 1, i, [0, p - 1]),
+    my(i = 1);
+    while (i < m && !x[i], i++);
+    if (i == m || x[i] == 1, listput(st, [B1 * concat([0], x)~, 1, 0])));
+  while (#st,
+    e = st[#st]; listpop(st);
+    if (e[3] >= U, next);
+    if (cnt++ > maxcls,
+      return([U, 0, min(U, vecmin(vector(#st + 1, i, if (i <= #st, st[i][3], e[3]))))]));
+    [w, j] = [e[1], e[2]];
+    prec = ceil(j / emin);
+    r = mono_index_bound(T, w, p, U);
+    if (r < U, U = r);
+    \\ the bound for the class w + I_j: v_p [O_K : Z_p[w] + I_j]
+    b = if (j < emax * U, mono_ideal_bound(T, w, p, H[j + 1], prec), U);
+    if (b < U && j < #Q,
+      forvec (x = vector(#Q[j + 1], i, [0, p - 1]), listput(st, [w + Q[j + 1] * x~, j + 1, b]))));
+  [U, 1];
+}
+
+\\ v_p [O_K : Z_p[a] + I], for an ideal I (HNF matrix H) containing p^k O_K.
+mono_ideal_bound(T, w, p, H, k) =
+{
+  my(n = #T, q = p^k, A = sum(i = 2, n, w[i] * T[i]) % q, M = matrix(n, n), v = vectorv(n, i, i == 1));
+  for (j = 1, n, M[, j] = v; if (j < n, v = (A * v) % q));
+  M = mathnfmodid(concat(M, H), q);
+  valuation(prod(i = 1, n, M[i, i]), p);
+}
+
+\\ v_p(i(K)) as above, much faster: O_K (x) Z_p is the product of the O_P for the primes
+\\ P above p, and for a in O_K let phi_P be the minimal polynomial over F_p of a mod P.
+\\ If G is the set of P with the same phi, a_G the component of a in O_G = prod_{P in G}
+\\ O_P, then the charpolys of the a_G are coprime mod p, so Z_p[a] = prod_G Z_p[a_G] and
+\\ v_p [O_K : Z[a]] = sum_G v_p [O_G : Z_p[a_G]]. So
+\\   v_p(i(K)) = min over the ways to give each P an irreducible phi_P with deg phi_P | f_P
+\\               of sum over the groups G (same phi) of c(G, phi),
+\\ c(G, phi) = the smallest v_p [O_G : Z_p[b]] over b in O_G with phi(b) in every P of G,
+\\ found by the search above inside O_G (mono_group_index). The minimum over the ways is a
+\\ dynamic program over the subsets of the P, one phi at a time. Simplifications, all exact:
+\\  * if every P in G is unramified with f_P = d = deg phi (k of them), then
+\\    c(G, phi) = d (k(k-1)/2 + g(k)), where g(k) is the smallest sum of v(x_i - x_j) over
+\\    k distinct x_i in W = W(F_q), q = p^d (mono_split_index): the index only depends on
+\\    the charpolys of the b_P, so (applying Frobenius to each O_P = W) all b_P = w + p y_P
+\\    with w the Teichmuller lift of one root of phi, and then only the d conjugate pairs
+\\    of roots that agree mod p count, each with v = 1 + v(y_P - y_Q). With k = 1: c = 0;
+\\  * c(G, phi) >= the number of pairs in G (each pair P, Q has v_p(Res) >= 1) plus the
+\\    number of P in G with deg phi < f_P (then p | [O_P : Z_p[b]]); c(G, phi) is not
+\\    computed when this bound cannot improve the minimum;
+\\  * c(G, phi) = c(G, psi) for psi(x) = u^d phi((x - t) / u), u, t in Z, p not | u (b -> u b + t);
+\\  * a P such that there are more irreducible polynomials of degree f_P than other P that
+\\    could use one (d | f_Q) can always get a phi of its own, at cost 0, and removing P
+\\    from a group does not increase its cost, so such P are left out (repeatedly).
+\\ Returns [v, 1], or [U, 0, lo] (lo <= v <= U) if a search needs more than maxcls classes
+\\ or there are too many ways (more than maxcls subset pairs).
+\\ g(k): the smallest sum over pairs of v(x_i - x_j) for k distinct x_i in W(F_q): split
+\\ them by residue into q classes (sizes s_i), each pair in a class has v >= 1, so
+\\ g(k) = min over the sizes of sum (s_i (s_i - 1) / 2 + g(s_i)) (s_i < k).
+mono_split_index(q, k, memo = Map()) =
+{
+  my(r, h);
+  if (k <= q, return(0));
+  if (mapisdefined(memo, k, &r), return(r));
+  \\ h[j + 1][s + 1] = best way to put s elements into j classes
+  my(J = min(q, k));
+  h = vector(J + 1, j, vector(k + 1, s, if (j == 1, if (s == 1, 0, oo), oo)));
+  for (j = 2, J + 1,
+    for (s = 0, k,
+      for (t = 0, min(s, k - 1),
+        my(prev = h[j - 1][s - t + 1]);
+        if (prev < oo, h[j][s + 1] = min(h[j][s + 1], prev + t * (t - 1) / 2 + mono_split_index(q, t, memo))))));
+  r = h[J + 1][k + 1];
+  mapput(memo, k, r);
+  r;
+}
+
+mono_irreducibles(p, d) =
+{
+  my(L = List());
+  forvec (c = vector(d, i, [0, p - 1]),
+    my(g = 'x^d + Pol(c, 'x));
+    if (polisirreducible(Mod(1, p) * g), listput(L, g)));
+  Vec(L);
+}
+
+\\ The representative of phi up to x -> u x + t (mod p), as a coefficient vector.
+mono_phi_key(phi, p) =
+{
+  my(d = poldegree(phi), best);
+  for (u = 1, p - 1,
+    for (t = 0, p - 1,
+      my(g = lift(Mod(u, p)^d * subst(Mod(1, p) * phi, 'x, ('x - t) / Mod(u, p))), k = Vec(g));
+      if (!best || lex(k, best) < 0, best = k)));
+  best;
+}
+
+\\ v_p [O_K : span(e a^j, j < nG) + (1 - e) O_K + p^k O_K] = v_p [O_G : Z_p[a_G] + p^k O_G].
+mono_group_bound(T, e, C, nG, a, p, k) =
+{
+  my(n = #T, q = p^k, A = sum(i = 1, n, a[i] * T[i]) % q, M = matrix(n, nG), v = e % q, H);
+  for (j = 1, nG, M[, j] = v; if (j < nG, v = (A * v) % q));
+  H = mathnfmodid(concat(M, C % q), q);
+  valuation(prod(i = 1, n, H[i, i]), p);
+}
+
+\\ c(G, phi) as above, or cap if it is >= cap; [c, number of classes, done].
+mono_group_index(nf, T, dec, E, G, phi, p, cap, maxcls) =
+{
+  my(n = #T, e = vectorv(n), nG = 0, C, B, r, st = List(), cnt = 0, U = cap, ent, a, k, b, one = vectorv(n, i, i == 1));
+  for (i = 1, #G, e += E[G[i]]; nG += dec[G[i]].e * dec[G[i]].f);
+  C = sum(i = 1, n, (one - e)[i] * T[i]);
+  \\ a basis of O_G mod p starting with e (translations by Z are left out)
+  B = Mat(e); r = 1;
+  for (j = 1, n, if (r == nG, break);
+    my(B2 = concat(B, (sum(i = 1, n, e[i] * T[i]))[, j]));
+    if (matrank(Mod(B2, p)) > r, B = B2; r++));
+  if (r < nG, error("mono_group_index: no basis of O_G"));
+  B = B[, 2 .. nG];
+  if (p^nG > maxcls, return([cap, 0, 0]));
+  \\ the classes mod p: b mod p O_G with phi(b) in every P of G
+  forvec (c = vector(nG, i, [0, p - 1]),
+    my(a0 = B * c[2 .. nG]~ + c[1] * e, y = vectorv(n), v = one);
+    for (i = 0, poldegree(phi), y += polcoef(phi, i) * v; v = nfeltmul(nf, v, a0) % p);
+    if (sum(i = 1, #G, nfeltval(nf, y % p, dec[G[i]]) > 0) == #G, listput(st, [a0, 1, 0])));
+  while (#st,
+    ent = st[#st]; listpop(st);
+    if (ent[3] >= U, next);
+    if (cnt++ > maxcls, return([U, cnt, 0]));
+    [a, k] = [ent[1], ent[2]];
+    r = mono_group_bound(T, e, C, nG, a, p, U);
+    if (r < U, U = r);
+    b = if (k < U, mono_group_bound(T, e, C, nG, a, p, k), U);
+    if (b < U,
+      forvec (c = vector(nG - 1, i, [0, p - 1]), listput(st, [a + p^k * B * c~, k + 1, b]))));
+  [U, cnt, 1];
+}
+
+mono_field_index_p(nf, p, maxcls = 10^6) =
+{
+  my(n = poldegree(nf.pol), U0, dec, m, keep, F, T, K, E, fa, phis, dp, memo = Map(), done = 1, work = 0, lo);
+  U0 = (valuation(poldisc(nf.pol), p) - valuation(nf.disc, p)) / 2;
+  if (U0 == 0, return([0, 1]));
+  dec = idealprimedec(nf, p); m = #dec;
+  F = vector(m, i, dec[i].f);
+  \\ leave out the P that can always get a polynomial of their own
+  keep = vector(m, i, 1);
+  my(avail = Map(), changed = 1);
+  while (changed,
+    changed = 0;
+    for (i = 1, m, if (keep[i],
+      my(demand = sum(j = 1, m, keep[j] && j != i && F[j] % F[i] == 0), have);
+      if (!mapisdefined(avail, F[i], &have), have = mono_nirred(p, F[i]));
+      if (have > demand, keep[i] = 0; mapput(avail, F[i], have - 1); changed = 1))));
+  keep = [i | i <- [1 .. m], keep[i]];
+  if (!#keep, return([0, 1]));
+  T = mono_multables(nf);
+  K = U0 + 1;
+  \\ idempotents mod p^K
+  fa = matconcat([Col(dec), Col(vector(m, i, dec[i].e * K))]);
+  E = vector(m, i, nfalgtobasis(nf, idealchinese(nf, fa, vector(m, j, j == i))));
+  \\ the polynomials: every degree dividing an f_P of a kept P
+  phis = List();
+  foreach (Set(concat(vector(#keep, i, divisors(F[keep[i]])))), d,
+    foreach (mono_irreducibles(p, d), g, listput(phis, g)));
+  \\ the kept P by type: the unramified P with the same f are interchangeable (all O_P are
+  \\ W(F_(p^f))), so the dynamic program only counts how many of each type a group has
+  my(tys = List(), INF = K + 1, R, NS, sv);
+  for (i = 1, #keep, my(P = dec[keep[i]], t = 0);
+    if (P.e == 1, for (j = 1, #tys, if (tys[j][1] == 1 && tys[j][2] == P.f, t = j; break)));
+    if (t, listput(tys[t][3], keep[i]), listput(tys, [P.e, P.f, List([keep[i]])])));
+  my(nt = #tys, cnt = vector(nt, t, #tys[t][3]));
+  R = vector(nt); R[1] = 1; for (t = 2, nt, R[t] = R[t - 1] * (cnt[t - 1] + 1));
+  NS = R[nt] * (cnt[nt] + 1);
+  if (NS > maxcls, return([U0, 0, 1]));
+  sv = vector(NS, i, my(x = i - 1); vector(nt, t, (x \ R[t]) % (cnt[t] + 1)));  \\ state i -> counts
+  dp = vector(NS, i, INF); dp[1] = 0;
+  foreach (phis, phi,
+    my(d = poldegree(phi), nd = dp, key = mono_phi_key(phi, p), comp = vector(nt, t, tys[t][2] % d == 0));
+    if (!vecmax(comp), next);
+    for (S = 2, NS,
+      my(s = sv[S]);
+      forvec (tau = vector(nt, t, [0, if (comp[t], s[t], 0)]),
+        my(k = vecsum(tau), rest, base, lb, c);
+        if (!k, next);
+        rest = S - sum(t = 1, nt, tau[t] * R[t]);
+        base = dp[rest];
+        if (base >= INF, next);
+        lb = k * (k - 1) / 2 + sum(t = 1, nt, tau[t] * (tys[t][2] > d));
+        if (base + lb >= nd[S], next);
+        if (vecmin(vector(nt, t, !tau[t] || (tys[t][1] == 1 && tys[t][2] == d))),
+          c = d * (k * (k - 1) / 2 + mono_split_index(p^d, k)),
+          my(mkey = [tau, key], got, cap = min(INF, nd[S] - base));
+          if (mapisdefined(memo, mkey, &got), c = got,
+            my(G = concat(vector(nt, t, vector(tau[t], i, tys[t][3][i]))), res);
+            res = mono_group_index(nf, T, dec, E, G, phi, p, cap, maxcls);
+            work += res[2];
+            if (!res[3], done = 0);
+            c = res[1];
+            \\ only an exact value (below the cap) can be reused
+            if (res[3] && c < cap, mapput(memo, mkey, c))));
+        nd[S] = min(nd[S], base + c);
+        if (work > maxcls, return([U0, 0, 1]))));
+    dp = nd);
+  my(S0 = NS - 1);
+  if (dp[S0 + 1] > U0, error("mono_field_index_p: found no a of index <= ", U0));
+  if (!done, return([dp[S0 + 1], 0, 1]));
+  [dp[S0 + 1], 1];
+}
+
+\\ v_p(i(K)) for nf maximal at p: mono_field_index_global (fast in low degree, and
+\\ when p ramifies) and mono_field_index_p (fast when p is unramified: the closed form),
+\\ in that order or the other way round, the second one only if the first gives up
+\\ (more than maxcls classes). Returns [v, 1], or [U, 0, lo] with lo <= v <= U if both
+\\ give up.
+mono_field_index(nf, p, maxcls = 2 * 10^4) =
+{
+  my(unram = vecmax([P.e | P <- idealprimedec(nf, p)]) == 1, r, s);
+  r = if (unram, mono_field_index_p(nf, p, maxcls), mono_field_index_global(nf, p, maxcls));
+  if (r[2], return(r));
+  s = if (unram, mono_field_index_global(nf, p, maxcls), mono_field_index_p(nf, p, maxcls));
+  if (s[2], return(s));
+  [min(r[1], s[1]), 0, max(if (#r > 2, r[3], 0), if (#s > 2, s[3], 0))];
+}
+
 \\ The modulus p^k that decides whether I(x) = s has a solution over Z_p, or 0
 \\ if p can only be an obstruction as a common index divisor. Since I is
 \\ homogeneous, I(t x) = t^d I(x), so the values of I on primitive x are unions
