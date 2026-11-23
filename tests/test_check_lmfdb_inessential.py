@@ -5,6 +5,8 @@ import tempfile
 import unittest
 from unittest import mock
 
+import cypari2
+
 SCRIPTS = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "scripts")
 sys.path.insert(0, SCRIPTS)
 
@@ -192,6 +194,64 @@ class TestInessential(unittest.TestCase):
                 self.assertEqual(fh.read(), "label|index\ntext|integer\n\n3.3.473.1|1\n")
             with open(upd) as fh:
                 self.assertEqual(fh.read(), "label|inessentialp\ntext|integer[]\n\n3.3.473.1|[]\n3.3.961.1|[2]\n")
+
+    def test_cid_from_the_polynomial(self):
+        # mono_cid_pol (Dedekind where it applies, nfinit([f, [p]]) elsewhere) agrees with
+        # mono_common_index_divisors on nfinit([f, primes < n])
+        for gr, B in (("[3,2]", 10**5), ("[4,2]", 10**4), ("[4,3]", 10**4), ("[5,2]", 10**6), ("[6,3]", 10**5)):
+            for f in list(pari.nflist(pari(gr), [1, B]))[:150]:
+                n = int(pari.poldegree(f))
+                nf = pari.nfinit([f, pari.primes([2, n - 1])])
+                self.assertEqual(pari("mono_cid_pol")(f), pari("mono_common_index_divisors")(nf), str(f))
+
+    def test_pari_call(self):
+        # a stack overflow is retried with a larger maximum stack, up to MAX_STACK
+        import monogenic
+        size, big = pari.stacksize(), pari.stacksizemax()
+        try:
+            pari.allocatemem(10**6, 10**6, silent=True)
+            with mock.patch.object(monogenic, "MAX_STACK", 2**28):
+                self.assertEqual(len(monogenic.pari_call(pari, "vector(2*10^5, i, i^2)")), 2 * 10**5)
+            pari.allocatemem(10**6, 10**6, silent=True)
+            with mock.patch.object(monogenic, "MAX_STACK", 10**6):
+                with self.assertRaises(cypari2.PariError):
+                    monogenic.pari_call(pari, "vector(2*10^5, i, i^2)")
+        finally:
+            pari.allocatemem(size, big, silent=True)
+
+    def test_skip_and_errors(self):
+        import check_lmfdb_inessential as cli
+        rows = ["label|coeffs|inessentialp|index|monogenic",
+                "3.1.23.1|[-1,-1,0,1]|[]|1|1",
+                "3.1.31.1|[-1,1,0,1]|[]|1|1",
+                "3.3.961.1|[8,-10,-1,1]|[]|2|\\N"]
+        with tempfile.TemporaryDirectory() as tmp:
+            src, out, upd = (os.path.join(tmp, name) for name in ("in.txt", "problems.txt", "update.txt"))
+            with open(src, "w") as fh:
+                fh.write("\n".join(rows) + "\n")
+            real = cli.check_field
+
+            def boom(label, *args):
+                if label == "3.1.31.1":
+                    raise cypari2.PariError(28)
+                return real(label, *args)
+            argv = ["x", "--input", src, "--write", out, "--update", upd, "--no-data", "-q"]
+            with mock.patch.object(cli, "check_field", boom), mock.patch.object(sys, "argv", argv), \
+                    mock.patch("builtins.print") as printed:
+                with self.assertRaises(SystemExit):
+                    cli.main()
+            text = "\n".join(str(c.args[0]) for c in printed.call_args_list)
+            self.assertIn("degree 3: 3 fields checked, 1 with inessential primes, 2 with problems; "
+                          "1 inessentialp; 1 error", text)
+            with open(out) as fh:
+                self.assertEqual([line.split("|")[:2] for line in fh.read().splitlines()],
+                                 [["3.1.31.1", "error"], ["3.3.961.1", "inessentialp"]])
+            proc = subprocess.run([sys.executable, os.path.join(SCRIPTS, "check_lmfdb_inessential.py"),
+                                   "--input", src, "--write", out, "--update", upd, "--no-data", "--skip", "2",
+                                   "-q"], capture_output=True, text=True)
+            self.assertIn("degree 3: 3 fields checked, 1 with inessential primes, 1 with problems", proc.stdout)
+            with open(upd) as fh:  # appended, one header
+                self.assertEqual(fh.read(), "label|inessentialp\ntext|integer[]\n\n3.3.961.1|[2]\n3.3.961.1|[2]\n")
 
 
 if __name__ == "__main__":

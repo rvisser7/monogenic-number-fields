@@ -38,7 +38,12 @@ and index may be \\N. Header lines are skipped.
 Each problem is printed as "label: ..." (at most --show per degree) and, with --write
 FILE, written as label|kind|message. The kinds are: format (zk missing, the wrong
 length, or not readable), dependent, not_integral, disc (the basis is not all of O_K),
-index (the index column is not the index of the field), nfdisc. The exit status is 1 if there is a problem.
+index (the index column is not the index of the field), nfdisc, and error (PARI failed on
+the field, e.g. out of stack even after letting it grow to MONOGENIC_MAX_STACK bytes,
+default 8 GB: the field is skipped and the run goes on). The exit status is 1 if there is
+a problem. The progress lines show the number of fields checked and the last label; to
+resume a run that stopped, start it again with --skip N (N = the last number of fields
+checked; the first degree only), which appends to the --write file.
 
 Usage:
     sage -python scripts/check_lmfdb_zk.py --degrees 4 --max-disc 10^6
@@ -55,9 +60,9 @@ from collections import Counter
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from compare_lmfdb import DiscRange, Log, parse_degrees, parse_int
-from monogenic import NULL, label_disc, label_key, parse_coeffs, pari
+from monogenic import NULL, first_line, label_disc, label_key, pari, pari_call, parse_coeffs
 
-KINDS = ["format", "dependent", "not_integral", "disc", "index", "nfdisc"]
+KINDS = ["format", "dependent", "not_integral", "disc", "index", "nfdisc", "error"]
 
 
 def parse_element(e, f):
@@ -76,12 +81,9 @@ def parse_element(e, f):
 
 def common_index_divisors(f):
     """The common index divisors of K = Q[x]/(f), i.e. the primes dividing the index
-    i(K) of the field (all < deg f), by Hensel's criterion (mono_common_index_divisors)."""
-    n = pari.poldegree(f)
-    ps = [int(p) for p in pari.primes([2, n - 1])] if n > 2 else []
-    if not ps:
-        return []
-    return [int(p) for p in pari("mono_common_index_divisors")(pari.nfinit([f, ps]))]
+    i(K) of the field (all < deg f), by Hensel's criterion (mono_cid_pol: the residue
+    degrees from f mod p where Dedekind's criterion applies, else from nfinit([f, [p]]))."""
+    return [int(p) for p in pari("mono_cid_pol")(f)]
 
 
 def check_index(f, index, ind=None):
@@ -150,9 +152,10 @@ def get_db():
     return db
 
 
-def db_fields(n, disc, log, shard, batch=10000, db=None):
+def db_fields(n, disc, log, shard, batch=10000, db=None, skip=0):
     """(label, coeffs, zk, index) for the LMFDB fields of degree n: coeffs and index from
-    nf_fields, zk from nf_fields_extra (same label), fetched `batch` labels at a time."""
+    nf_fields, zk from nf_fields_extra (same label), fetched `batch` labels at a time.
+    The first `skip` fields (of this shard) are left out."""
     db = db or get_db()
     query = dict(degree=n, **disc.query())
     total = db.nf_fields.count(query)
@@ -166,8 +169,14 @@ def db_fields(n, disc, log, shard, batch=10000, db=None):
         rows.clear()
         return out
 
+    kept = 0
     for i, r in enumerate(db.nf_fields.search(query, ["label", "coeffs", "index"])):
         if i % shard[1] != shard[0]:
+            continue
+        kept += 1
+        if kept <= skip:
+            if kept % 10**5 == 0 or kept == skip:
+                log.say("degree %d: skipped %d fields" % (n, kept))
             continue
         rows.append((r["label"], [int(c) for c in r["coeffs"]], r.get("index")))
         if len(rows) >= batch:
@@ -214,6 +223,9 @@ def main():
     parser.add_argument("--show", type=int, default=20, metavar="N",
                         help="print at most N problems per degree (default 20)")
     parser.add_argument("--write", metavar="FILE", help="write every problem to FILE (label|kind|message)")
+    parser.add_argument("--skip", type=int, default=0, metavar="N",
+                        help="skip the first N fields of the first degree, to resume a run that stopped "
+                             "(N = the last 'N fields checked' it printed)")
     parser.add_argument("--progress-every", type=float, default=30, metavar="SECONDS",
                         help="print progress this often (default 30)")
     parser.add_argument("-q", "--quiet", action="store_true", help="no progress lines")
@@ -225,14 +237,21 @@ def main():
     log = Log(args.progress_every, args.quiet)
     degrees = parse_degrees(args.degrees) if args.degrees else []
     from_file = file_fields(args.input, degrees, disc, shard) if args.input else None
-    out = open(args.write, "w") if args.write else None
+    out = open(args.write, "a" if args.skip else "w", buffering=1) if args.write else None
     any_problem = False
-    for n in (sorted(from_file) if from_file is not None else degrees):
-        rows = from_file[n] if from_file is not None else db_fields(n, disc, log, shard, args.batch)
-        checked, kinds, bad, shown = 0, Counter(), 0, 0
+    for k, n in enumerate(sorted(from_file) if from_file is not None else degrees):
+        skip = args.skip if k == 0 else 0
+        if from_file is not None:
+            rows = from_file[n][skip:]
+        else:
+            rows = db_fields(n, disc, log, shard, args.batch, skip=skip)
+        checked, kinds, bad, shown = skip, Counter(), 0, 0
         for label, coeffs, zk, index in rows:
             checked += 1
-            problems = check_zk(label, coeffs, zk, index, args.nfdisc)
+            try:
+                problems = pari_call(check_zk, label, coeffs, zk, index, args.nfdisc)
+            except Exception as err:  # a PARI error (e.g. out of stack): log it and go on
+                problems = [("error", "skipped, %s: %s" % (type(err).__name__, first_line(err)))]
             if problems:
                 bad += 1
                 any_problem = True
@@ -243,7 +262,7 @@ def main():
                     shown += 1
                 if out:
                     out.write("%s|%s|%s\n" % (label, kind, msg))
-            log.tick("degree %d: %d fields checked, %d with problems" % (n, checked, bad))
+            log.tick("degree %d: %d fields checked, %d with problems (last %s)" % (n, checked, bad, label))
         print("degree %d: %d fields checked, %d with problems%s"
               % (n, checked, bad, "".join("; %d %s" % (kinds[k], k) for k in KINDS if kinds[k])), flush=True)
     if out:

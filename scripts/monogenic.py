@@ -14,6 +14,9 @@ import cypari2
 
 pari = cypari2.Pari()
 pari.allocatemem(2 * 10**8, silent=True)
+# pari_call lets the PARI stack grow up to this size (bytes) for a single hard field; set
+# MONOGENIC_MAX_STACK to change it (default 8 GB).
+MAX_STACK = int(float(os.environ.get("MONOGENIC_MAX_STACK", 8 * 2**30)))
 pari('read("%s")' % os.path.join(os.path.dirname(os.path.abspath(__file__)), "monogenic.gp"))
 
 DATA_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "data")
@@ -25,6 +28,25 @@ HEADER = "label|monogenic|monogenic_coeffs\ntext|smallint|numeric[]\n\n"
 # with it are still read, and are written with HEADER (check_data.py --fix rewrites them).
 OLD_HEADER = "label|monogenic|zk_coeffs\ntext|smallint|numeric[]\n\n"
 NULL = r"\N"
+
+
+def pari_call(fn, *args, **kwargs):
+    """fn(*args, **kwargs), and if the PARI stack overflows, double the largest size the
+    stack may grow to (up to MAX_STACK) and try again, so one hard field does not stop a
+    long run. Other errors, and an overflow at MAX_STACK, are raised."""
+    while True:
+        try:
+            return fn(*args, **kwargs)
+        except cypari2.PariError as err:
+            big = pari.stacksizemax()
+            if "stack overflows" not in str(err) or big >= MAX_STACK:
+                raise
+            pari.allocatemem(pari.stacksize(), min(2 * big, MAX_STACK), silent=True)
+
+
+def first_line(err):
+    """The first line of an error message, e.g. for a log line."""
+    return (str(err).strip().splitlines() or [type(err).__name__])[0]
 
 
 def parse_coeffs(s):

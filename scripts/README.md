@@ -285,6 +285,13 @@ Each problem has a kind: `format`, `dependent`, `not_integral`, `disc` (not all 
 $\mathcal{O}_K$, with its index when the elements are integral), `index`, `nfdisc`. The exit
 status is 1 if there is any. `--shard i/k` splits a run.
 
+Both this script and `check_lmfdb_inessential.py` below go on after a field where PARI
+fails: a PARI stack overflow is retried with a larger stack (up to `MONOGENIC_MAX_STACK`
+bytes, default 8 GB), and if it still fails the field is reported with kind `error` and
+skipped. Their progress lines show the number of fields checked and the last label, and
+`--skip N` resumes a run that stopped after N fields of its first degree (appending to the
+output files), e.g. `--degrees 8-47 --skip 1742960`.
+
 ### Checking the LMFDB inessential primes and index
 
 `scripts/check_lmfdb_inessential.py` checks the `inessentialp` and `index` columns of

@@ -284,6 +284,26 @@ mono_common_index_divisors(nf) =
   Vec(res);
 }
 
+\\ The same from the polynomial f alone, without nfinit for most p: if p^2 does not
+\\ divide disc(f), then p does not divide [O_K : Z[a]], and (Dedekind) the residue degrees
+\\ of the primes above p are the degrees of the irreducible factors of f mod p. Only the
+\\ other p need an order that is maximal at p (nfinit([f, [p]])).
+mono_residue_degrees(f, p, d = poldisc(f)) =
+{
+  if (d % p^2, my(F = factormod(f, p)[, 1]); return(vector(#F, i, poldegree(F[i]))));
+  [P.f | P <- idealprimedec(nfinit([f, [p]]), p)];
+}
+
+mono_cid_pol(f) =
+{
+  my(n = poldegree(f), d = poldisc(f), res = List());
+  forprime (p = 2, n - 1,
+    my(F = vector(n));
+    foreach (mono_residue_degrees(f, p, d), k, F[k]++);
+    for (k = 1, n, if (F[k] > mono_nirred(p, k), listput(res, p); break)));
+  Vec(res);
+}
+
 \\ The exact index of the field at p: v_p(i(K)), i(K) = gcd of [O_K : Z[a]] over all a in
 \\ O_K with K = Q(a), for nf maximal at p (e.g. nfinit([f, [p]])). Let rad be the product
 \\ of the primes P above p, I_j = rad^j, and for an ideal I

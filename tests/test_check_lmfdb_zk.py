@@ -3,6 +3,9 @@ import subprocess
 import sys
 import tempfile
 import unittest
+from unittest import mock
+
+import cypari2
 
 SCRIPTS = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "scripts")
 sys.path.insert(0, SCRIPTS)
@@ -114,6 +117,43 @@ class TestCheckZk(unittest.TestCase):
                 lines = fh.read().splitlines()
             self.assertEqual([line.split("|")[:2] for line in lines],
                              [["4.0.19982592.7", "disc"]])
+
+    def test_skip_and_errors(self):
+        # a PARI error on one field is logged as "error" and the run goes on; --skip N
+        # resumes after the first N fields and appends to the --write file
+        import check_lmfdb_zk
+        rows = ['label|coeffs|zk|index',
+                '3.1.23.1|[-1,-1,0,1]|["1","a","a^2"]|1',
+                '3.1.31.1|[-1,1,0,1]|["1","a","a^2"]|1',
+                '3.3.961.1|[8,-10,-1,1]|["1","a","1/2*a^2 - 1/2*a"]|1']
+        with tempfile.TemporaryDirectory() as tmp:
+            src, out = os.path.join(tmp, "zk.txt"), os.path.join(tmp, "problems.txt")
+            with open(src, "w") as fh:
+                fh.write("\n".join(rows) + "\n")
+            real = check_lmfdb_zk.check_zk
+
+            def boom(label, *args):
+                if label == "3.1.31.1":
+                    raise cypari2.PariError(28)  # e_MEM-like
+                return real(label, *args)
+            argv = ["check_lmfdb_zk.py", "--input", src, "--write", out, "-q"]
+            with mock.patch.object(check_lmfdb_zk, "check_zk", boom), mock.patch.object(sys, "argv", argv), \
+                    mock.patch("builtins.print") as printed:
+                with self.assertRaises(SystemExit):
+                    check_lmfdb_zk.main()
+            text = "\n".join(str(c.args[0]) for c in printed.call_args_list)
+            self.assertIn("degree 3: 3 fields checked, 2 with problems; 1 index; 1 error", text)
+            with open(out) as fh:
+                self.assertEqual([line.split("|")[:2] for line in fh.read().splitlines()],
+                                 [["3.1.31.1", "error"], ["3.3.961.1", "index"]])
+            # resume after the first 2 fields: only 3.3.961.1 is checked, and appended
+            proc = subprocess.run([sys.executable, os.path.join(SCRIPTS, "check_lmfdb_zk.py"),
+                                   "--input", src, "--write", out, "--skip", "2", "-q"],
+                                  capture_output=True, text=True)
+            self.assertIn("degree 3: 3 fields checked, 1 with problems; 1 index", proc.stdout)
+            with open(out) as fh:
+                self.assertEqual([line.split("|")[0] for line in fh.read().splitlines()],
+                                 ["3.1.31.1", "3.3.961.1", "3.3.961.1"])
 
 
 if __name__ == "__main__":

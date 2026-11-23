@@ -11,9 +11,10 @@ them independently of the LMFDB, with Hensel's criterion:
                          than there are monic irreducible polynomials of degree f over F_p.
 
 (Only the residue degrees matter, not the ramification indices.) The number of monic
-irreducible polynomials of degree f over F_p is (1/f) sum_{d | f} mu(d) p^(f/d), and the
-residue degrees come from PARI's idealprimedec, on an order that is maximal at the primes
-p < n = [K : Q] (only those can be inessential, since the count for f = 1 is p). So
+irreducible polynomials of degree f over F_p is (1/f) sum_{d | f} mu(d) p^(f/d). Only the
+primes p < n = [K : Q] can be inessential (the count for f = 1 is p). The residue degrees
+come from the factors of f mod p if p^2 does not divide disc(f) (Dedekind's criterion),
+else from PARI's idealprimedec on an order that is maximal at p (nfinit([f, [p]])). So
 e.g. 2 is inessential in the cubic field 3.3.961.1, where 2 splits completely and there
 are only 2 linear polynomials over F_2.
 
@@ -50,8 +51,12 @@ written as label|kind|message. With --update FILE, the computed inessentialp of 
 where the LMFDB value is wrong or missing goes to FILE, for the LMFDB editors, with header
 label|inessentialp, text|integer[]. With --index-update FILE, the exact index of every
 field where the index column is wrong or missing goes to FILE, with header label|index,
-text|integer (the --write file has both values). The exit status is 1 if there is a
-problem.
+text|integer (the --write file has both values). If PARI fails on a field (e.g. out of
+stack even after letting it grow to MONOGENIC_MAX_STACK bytes, default 8 GB), the field is
+reported as `error` and the run goes on. The exit status is 1 if there is a problem. The
+progress lines show the number of fields checked and the last label; to resume a run that
+stopped, start it again with --skip N (N = the last number of fields checked; the first
+degree only), which appends to the output files.
 
 Usage:
     sage -python scripts/check_lmfdb_inessential.py --degrees 3-8 --max-disc 10^6
@@ -68,9 +73,10 @@ from collections import Counter
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from compare_lmfdb import DiscRange, Log, parse_degrees, parse_int
-from monogenic import NULL, data_path, label_disc, label_key, parse_coeffs, pari, read_data
+from monogenic import (NULL, data_path, first_line, label_disc, label_key, pari, pari_call, parse_coeffs,
+                       read_data)
 
-KINDS = ["missing", "inessentialp", "index", "index_missing", "index_undecided", "monogenic", "ours"]
+KINDS = ["missing", "inessentialp", "index", "index_missing", "index_undecided", "monogenic", "ours", "error"]
 
 
 def mobius(n):
@@ -91,18 +97,13 @@ def n_irreducible(p, f):
 
 
 def _field(coeffs):
-    """(inessential primes, nf maximal at the primes < n) of K = Q[x]/(f)."""
-    n = len(coeffs) - 1
-    ps = [int(p) for p in pari.primes([2, n - 1])] if n > 2 else []
-    if not ps:
+    """(inessential primes, None) of K = Q[x]/(f); the None is filled in by field_index
+    with an nf maximal at those primes. The residue degrees come from mono_cid_pol: from f
+    mod p where Dedekind's criterion applies (p^2 does not divide disc(f)), else from
+    idealprimedec on nfinit([f, [p]])."""
+    if len(coeffs) <= 3:
         return [], None
-    nf = pari.nfinit([pari.Polrev(coeffs), ps])  # maximal at the primes in ps
-    out = []
-    for p in ps:
-        degrees = Counter(int(P[3]) for P in pari.idealprimedec(nf, p))  # P[3] = P.f
-        if any(k > n_irreducible(p, f) for f, k in degrees.items()):
-            out.append(p)
-    return out, nf
+    return [int(p) for p in pari("mono_cid_pol")(pari.Polrev(coeffs))], None
 
 
 def inessential_primes(coeffs):
@@ -116,6 +117,8 @@ def field_index(coeffs, maxcls=2 * 10**4, field=None):
     primes p, with v = v_p(i(K)) and lo = v if it is exact, otherwise lo <= v_p(i(K)) <= v
     (the search gave up after maxcls classes; see mono_field_index in monogenic.gp)."""
     cid, nf = field or _field(coeffs)
+    if cid and nf is None:
+        nf = pari.nfinit([pari.Polrev(coeffs), cid])  # maximal at the primes in cid
     out = []
     for p in cid:
         r = pari("mono_field_index")(nf, p, maxcls)
@@ -208,14 +211,21 @@ def get_db():
     return db
 
 
-def db_fields(n, disc, log, shard, db=None):
-    """(label, coeffs, inessentialp, index, monogenic) for the LMFDB fields of degree n."""
+def db_fields(n, disc, log, shard, db=None, skip=0):
+    """(label, coeffs, inessentialp, index, monogenic) for the LMFDB fields of degree n,
+    leaving out the first `skip` fields (of this shard)."""
     db = db or get_db()
     query = dict(degree=n, **disc.query())
     log.say("degree %d: %d LMFDB fields%s" % (n, db.nf_fields.count(query), disc))
     cols = ["label", "coeffs", "inessentialp", "index", "monogenic"]
+    kept = 0
     for i, r in enumerate(db.nf_fields.search(query, cols)):
         if i % shard[1] == shard[0]:
+            kept += 1
+            if kept <= skip:
+                if kept % 10**5 == 0 or kept == skip:
+                    log.say("degree %d: skipped %d fields" % (n, kept))
+                continue
             yield (r["label"], [int(c) for c in r["coeffs"]], r.get("inessentialp"),
                    r.get("index"), r.get("monogenic"))
 
@@ -268,6 +278,9 @@ def main():
                         help="do not compute the index of the field exactly (only check its primes)")
     parser.add_argument("--max-classes", type=parse_int, default=2 * 10**4, metavar="N",
                         help="give up on the exact index of a field after about N classes (default 2*10^4)")
+    parser.add_argument("--skip", type=int, default=0, metavar="N",
+                        help="skip the first N fields of the first degree, to resume a run that stopped "
+                             "(N = the last 'N fields checked' it printed); the output files are appended to")
     parser.add_argument("--progress-every", type=float, default=30, metavar="SECONDS",
                         help="print progress this often (default 30)")
     parser.add_argument("-q", "--quiet", action="store_true", help="no progress lines")
@@ -279,22 +292,32 @@ def main():
     log = Log(args.progress_every, args.quiet)
     degrees = parse_degrees(args.degrees) if args.degrees else []
     from_file = file_fields(args.input, degrees, disc, shard) if args.input else None
-    out = open(args.write, "w") if args.write else None
-    update = open(args.update, "w") if args.update else None
-    if update:
-        update.write("label|inessentialp\ntext|integer[]\n\n")
-    index_update = open(args.index_update, "w") if args.index_update else None
-    if index_update:
-        index_update.write("label|index\ntext|integer\n\n")
+    def open_out(path, header=""):
+        """An output file, line buffered; with --skip appended to (header only if new)."""
+        if not path:
+            return None
+        fresh = not args.skip or not os.path.exists(path) or os.path.getsize(path) == 0
+        fh = open(path, "w" if fresh else "a", buffering=1)
+        if fresh:
+            fh.write(header)
+        return fh
+
+    out = open_out(args.write)
+    update = open_out(args.update, "label|inessentialp\ntext|integer[]\n\n")
+    index_update = open_out(args.index_update, "label|index\ntext|integer\n\n")
     any_problem = False
-    for n in (sorted(from_file) if from_file is not None else degrees):
-        rows = from_file[n] if from_file is not None else db_fields(n, disc, log, shard)
+    for k, n in enumerate(sorted(from_file) if from_file is not None else degrees):
+        skip = args.skip if k == 0 else 0
+        rows = from_file[n][skip:] if from_file is not None else db_fields(n, disc, log, shard, skip=skip)
         ours = {} if args.no_data else our_data(n)
-        checked, kinds, bad, shown, with_cid = 0, Counter(), 0, 0, 0
+        checked, kinds, bad, shown, with_cid = skip, Counter(), 0, 0, 0
         for label, coeffs, inessentialp, index, mono in rows:
             checked += 1
-            problems, cid, idx = check_field(label, coeffs, inessentialp, index, mono, ours.get(label),
-                                             not args.no_exact_index, args.max_classes)
+            try:
+                problems, cid, idx = pari_call(check_field, label, coeffs, inessentialp, index, mono,
+                                               ours.get(label), not args.no_exact_index, args.max_classes)
+            except Exception as err:  # a PARI error (e.g. out of stack): log it and go on
+                problems, cid, idx = [("error", "skipped, %s: %s" % (type(err).__name__, first_line(err)))], [], None
             with_cid += bool(cid)
             if any(kind != "index_undecided" for kind, _ in problems):
                 bad += 1
@@ -306,11 +329,11 @@ def main():
                     shown += 1
                 if out:
                     out.write("%s|%s|%s\n" % (label, kind, msg))
-            if update and any(kind in ("missing", "inessentialp") for kind, _ in problems):
+            if update and any(kind in ("missing", "inessentialp") for kind, _ in problems):  # never "error"
                 update.write("%s|[%s]\n" % (label, ",".join(map(str, cid))))
             if index_update and idx is not None and any(kind in ("index", "index_missing") for kind, _ in problems):
                 index_update.write("%s|%d\n" % (label, idx))
-            log.tick("degree %d: %d fields checked, %d with problems" % (n, checked, bad))
+            log.tick("degree %d: %d fields checked, %d with problems (last %s)" % (n, checked, bad, label))
         print("degree %d: %d fields checked, %d with inessential primes, %d with problems%s"
               % (n, checked, with_cid, bad, "".join("; %d %s" % (kinds[k], k) for k in KINDS if kinds[k])),
               flush=True)
