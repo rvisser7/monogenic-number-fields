@@ -76,7 +76,7 @@ find_generators.py --degrees 39 --method pari -B 0 --batch 1 --only-new
 find_generators.py --degrees 40 --method pari -B 0 --batch 1 --only-new
 find_generators.py --degrees 41 --method pari -B 0 --batch 1 --only-new
 find_generators.py --degrees 42 --method pari -B 0 --batch 1 --only-new
-find_generators.py --degrees 43 --method pari -B 0 --batch 1 --only-new
+#find_generators.py --degrees 43 --method pari -B 0 --batch 1 --only-new  # degree 43 is done! (at least for -B 0)
 find_generators.py --degrees 44 --method pari -B 0 --batch 1 --only-new
 find_generators.py --degrees 45 --method pari -B 0 --batch 1 --only-new
 find_generators.py --degrees 46 --method pari -B 0 --batch 1 --only-new
