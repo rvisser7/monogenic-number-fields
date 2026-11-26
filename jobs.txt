@@ -39,11 +39,11 @@
 find_generators.py --degrees 3 --method pari -B 150 --only-new    # Degree 3, bound 50 is done!  (done in ~10hours)  bound 100 is done!
 find_generators.py --degrees 4 --method pari -B 10 --only-new    # Degree 4, bound 8 is done!  (done in ~14 hours)
 find_generators.py --degrees 5 --method pari -B 4 --only-new --min-disc 4304178000
-find_generators.py --degrees 6 --method pari -B 3 --only-new --min-disc 33716125
-find_generators.py --degrees 7 --method pari -B 2 --only-new --min-disc 90342081
-find_generators.py --degrees 8 --method pari -B 2 --only-new --min-disc 1690418125
-find_generators.py --degrees 9 --method pari -B 1 --only-new --min-disc 9509614901
-find_generators.py --degrees 10 --method pari -B 0 --batch 250 --only-new --min-disc 3638635673
+find_generators.py --degrees 6 --method pari -B 3 --only-new --min-disc 33808864
+find_generators.py --degrees 7 --method pari -B 2 --only-new --min-disc 90565412
+find_generators.py --degrees 8 --method pari -B 2 --only-new --min-disc 1700790129
+find_generators.py --degrees 9 --method pari -B 1 --only-new --min-disc 9976741893
+find_generators.py --degrees 10 --method pari -B 0 --batch 250 --only-new --min-disc 4846427731
 find_generators.py --degrees 11 --method pari -B 0 --batch 50 --only-new
 find_generators.py --degrees 12 --method pari -B 0 --batch 20 --only-new --min-disc 6297971699776
 find_generators.py --degrees 13 --method pari -B 0 --batch 10 --only-new --min-disc 266655711683820082308476515101175400160364220401
