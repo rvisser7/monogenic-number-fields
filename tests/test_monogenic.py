@@ -550,26 +550,12 @@ for b in range(25):
         lmfdb = [("3.1.23.1", 1, [1, 0, -1, 1]), ("3.1.31.1", 1, [-1, 1, 0, 1]), ("3.1.44.1", 0, [-1, 1, -1, 1]),
                  ("3.1.244.1", 1, [-6, 1, 0, 1]), ("3.1.503.1", -1, [8, 2, -1, 1])]
 
-        class Table:
-            def __init__(self):
-                self.queries = []
-
-            def rows(self, query):
-                self.queries.append(query)
-                for label, mono, coeffs in lmfdb:
-                    row = {"label": label, "degree": 3, "monogenic": mono, "coeffs": coeffs}
-                    if all(row[k] == v for k, v in query.items()):
-                        yield row
-
-            def count(self, query):
-                return len(list(self.rows(query)))
-
-            def search(self, query, cols):
-                return [{c: r[c] for c in cols} for r in self.rows(query)]
+        sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+        from fake_lmfdb import FakeTable
 
         def run(*extra):
             write_data(self.path, [("3.1.23.1", 1, [1, 0, -1, 1]), ("3.1.244.1", -1, None)])
-            table = Table()
+            table = FakeTable([{"label": label, "monogenic": mono, "coeffs": coeffs} for label, mono, coeffs in lmfdb])
             argv = ["find_generators.py", "--degrees", "3", "--method", "pari", "--lmfdb-monogenic"] + list(extra)
             saved = sys.argv, monogenic.DATA_DIR, monogenic.CONFLICT_LOG
             sys.modules["lmf"] = types.SimpleNamespace(db=types.SimpleNamespace(nf_fields=table))

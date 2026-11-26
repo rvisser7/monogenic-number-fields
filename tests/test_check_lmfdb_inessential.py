@@ -9,10 +9,12 @@ import cypari2
 
 SCRIPTS = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "scripts")
 sys.path.insert(0, SCRIPTS)
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from check_lmfdb_inessential import (check_field, db_fields, field_index,  # noqa: E402
                                      inessential_primes, n_irreducible, parse_primes)
 from compare_lmfdb import DiscRange, Log  # noqa: E402
+from fake_lmfdb import FakeDB  # noqa: E402
 from monogenic import pari  # noqa: E402
 
 C961 = [8, -10, -1, 1]  # 3.3.961.1: 2 splits completely
@@ -150,20 +152,11 @@ class TestInessential(unittest.TestCase):
                   {"label": "3.3.473.1", "coeffs": [-1, -10, 1, 1], "monogenic": 0},
                   {"label": "4.0.2197.1", "coeffs": Q2197, "inessentialp": [3], "index": 3, "monogenic": -1}]
 
-        class NF:
-            def count(self, query):
-                return sum(1 for r in fields if int(r["label"][0]) == query["degree"])
-
-            def search(self, query, cols):
-                for r in fields:
-                    if int(r["label"][0]) == query["degree"]:
-                        yield {k: r[k] for k in cols if k in r}
-
-        db = type("DB", (), {"nf_fields": NF()})()
+        db = FakeDB(nf_fields=fields)
         rows = list(db_fields(3, DiscRange(), Log(quiet=True), (0, 1), db=db))
-        self.assertEqual([r[0] for r in rows], ["3.1.23.1", "3.3.961.1", "3.3.473.1"])
+        self.assertEqual([r[0] for r in rows], ["3.1.23.1", "3.3.473.1", "3.3.961.1"])  # by |disc|
         self.assertEqual([kinds(check_field(*r)) for r in rows],
-                         [[], ["index", "inessentialp"], ["index_missing", "missing"]])
+                         [[], ["index_missing", "missing"], ["index", "inessentialp"]])
         rows = list(db_fields(4, DiscRange(), Log(quiet=True), (0, 1), db=db))
         self.assertEqual([kinds(check_field(*r)) for r in rows], [[]])
 

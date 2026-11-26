@@ -70,6 +70,13 @@ The rows are merged into data/degree<n>.txt every --batch fields, so an interrup
 keeps what it has done, and runs can be split with --shard or disc ranges and run in
 parallel.
 
+LMFDB fields are read in the order of |disc| (then label), --chunk at a time, and when
+the connection to the LMFDB is lost the script reconnects and goes on where it was
+(see lmfdb_fields.py), so long runs survive it. The progress lines name the last field
+checked; to resume a run that stopped anyway, start it again with --min-disc set to
+that field's |disc| (the few fields with that |disc| done before are done again, which
+changes nothing), and with --only-new if the method writes a row for every field.
+
 Needs cypari2: pip install cypari2, or run with sage -python. To get lmfdb-lite in Sage:
     sage -pip install -U "lmfdb-lite[pgbinary] @ git+https://github.com/roed314/lmfdb-lite.git"
 
@@ -99,6 +106,7 @@ from collections import Counter
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from monogenic import (NULL, cubic_generator, data_path, factor_generator, format_coeffs, search_generator,
                        merge_data, obstruction, parse_coeffs, read_data, root_generates)
+from lmfdb_fields import CHUNK, count_fields, search_fields
 from progress import Progress, fmt_time
 
 MAGMA_SCRIPT = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "magma", "monogenic.m")
@@ -124,10 +132,6 @@ def parse_int(s):
 
 def db_rows(degree, args):
     """(total, iterator of (label, coeffs)) for the LMFDB fields of this degree."""
-    try:
-        from lmfdb import db
-    except ImportError:
-        from lmf import db
     query = {"degree": degree}
     disc = {}
     if args.min_disc is not None:
@@ -140,8 +144,8 @@ def db_rows(degree, args):
         query["index"] = 1
     if args.lmfdb_monogenic:
         query["monogenic"] = 1
-    total = db.nf_fields.count(query)
-    rows = db.nf_fields.search(query, ["label", "coeffs"])
+    total = count_fields(query)
+    rows = search_fields(query, ["label", "coeffs"], chunk=args.chunk)
     return total, ((r["label"], [int(c) for c in r["coeffs"]]) for r in rows)
 
 
@@ -234,6 +238,8 @@ def main():
                         help="let any verified new generator replace the stored one, not "
                              "just one that comes first in the canonical order (1 against -1 "
                              "is decided by checking the generator, with or without this)")
+    parser.add_argument("--chunk", type=parse_int, default=CHUNK,
+                        help="read the LMFDB fields this many at a time (default %d)" % CHUNK)
     parser.add_argument("--progress-every", type=float, default=30, metavar="SECONDS",
                         help="when not on a terminal, how often to print progress (default 30)")
     args = parser.parse_args()
@@ -339,7 +345,7 @@ def main():
                         print("%s: not monogenic, %s" % (label, proof), file=sys.stderr, flush=True)
             if checked % batch_size == 0:
                 flush()
-            progress(i + 1, total, ", %d monogenic, %d not" % (found[1], found[-1]))
+            progress(i + 1, total, ", %d monogenic, %d not, at %s" % (found[1], found[-1], label))
         flush()
         print("degree %d: %d fields checked, %d monogenic, %d not monogenic, %d undecided"
               % (n, checked, found[1], found[-1], checked - found[1] - found[-1])

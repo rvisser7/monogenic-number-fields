@@ -163,6 +163,17 @@ runs on the same degree take turns instead of dropping each other's rows, and th
 rewritten atomically (a temporary file replaces it), so an interrupted run never leaves a
 truncated file.
 
+The scripts that read the LMFDB (`find_generators.py`, `compare_lmfdb.py`, `check_lmfdb_zk.py`,
+`check_lmfdb_inessential.py`, `check_data.py`) do it through `lmfdb_fields.py`: the fields are
+read in the order of |disc| (then label), 10000 at a time (`find_generators.py --chunk`), each with a
+short query of its own, so no connection has to stay open for the whole run. When the
+connection is lost (e.g. `SSL error: unexpected eof while reading` or `the connection is lost`
+after some hours), the script reconnects and runs the query again, waiting 10 s, 20 s, 40 s, ...
+(at most 10 minutes, about 40 minutes in all) between tries, and goes on where it was, without
+skipping or repeating a field. The progress lines of `find_generators.py` end with the last
+field checked; to resume a run that stopped anyway, run it again with `--min-disc` set to that
+field's |disc| (a few fields with that |disc| are done again, which changes nothing).
+
 To run several jobs at once, e.g. the search in each degree with its own bound, list them in a
 jobs file, one per line (a script in `scripts/` and its arguments; `#` starts a comment), and
 run `scripts/run_jobs.py jobs.txt --parallel 4`. At most `--parallel` jobs run at a time, each

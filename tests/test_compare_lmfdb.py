@@ -7,8 +7,10 @@ import unittest
 
 SCRIPTS = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "scripts")
 sys.path.insert(0, SCRIPTS)
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 import compare_lmfdb  # noqa: E402
+import fake_lmfdb  # noqa: E402
 from compare_lmfdb import DBSource, FileSource, Log, compare  # noqa: E402
 import contextlib  # noqa: E402
 import io  # noqa: E402
@@ -40,31 +42,10 @@ OURS = {
 }
 
 
-class FakeTable:
-    """Enough of a psycodict table for DBSource."""
-
-    def __init__(self, rows):
-        self.rows = [{"label": label, "degree": int(label.split(".")[0]), "disc_abs": int(label.split(".")[2]),
-                      "monogenic": mono, "coeffs": coeffs}
-                     for label, (mono, coeffs) in rows.items()]
-
-    def _match(self, row, query):
-        for col, cond in query.items():
-            if isinstance(cond, dict):
-                for op, val in cond.items():
-                    if row[col] is None:  # SQL: NULL != 0 is not true
-                        return False
-                    if not {"$ne": row[col] != val, "$gte": row[col] >= val, "$lte": row[col] <= val}[op]:
-                        return False
-            elif row[col] != cond:
-                return False
-        return True
-
-    def search(self, query, cols):
-        return [{c: r[c] for c in cols} for r in self.rows if self._match(r, query)]
-
-    def count(self, query):
-        return sum(1 for r in self.rows if self._match(r, query))
+def FakeTable(rows):
+    """Enough of a psycodict table for DBSource (see fake_lmfdb.py)."""
+    return fake_lmfdb.FakeTable([{"label": label, "monogenic": mono, "coeffs": coeffs}
+                                 for label, (mono, coeffs) in rows.items()])
 
 
 class TestCompare(unittest.TestCase):

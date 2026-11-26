@@ -56,13 +56,12 @@ def parse_degrees(s):
 
 def db_fields(labels, batch=1000):
     """{label: coeffs} from the LMFDB for the given labels."""
-    try:
-        from lmfdb import db
-    except ImportError:
-        from lmf import db
+    from lmfdb_fields import get_db, with_retries
+    db = get_db()
     out = {}
     for i in range(0, len(labels), batch):
-        for r in db.nf_fields.search({"label": {"$in": labels[i:i + batch]}}, ["label", "coeffs"]):
+        query = {"label": {"$in": labels[i:i + batch]}}
+        for r in with_retries(lambda: list(db.nf_fields.search(query, ["label", "coeffs"])), db):
             out[r["label"]] = [int(c) for c in r["coeffs"]]
     return out
 

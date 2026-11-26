@@ -18,8 +18,8 @@ printed; --write DIR writes the whole lists to files (see below). The exit statu
 there is a conflict or an unexpected value, and 0 otherwise.
 
 The LMFDB values come from the database (`from lmfdb import db`, or lmfdb-lite, as in
-find_generators.py): one query per degree for the fields with monogenic != 0, plus
-counts. Or they come from a file (--lmfdb FILE) with lines `label|monogenic` or
+find_generators.py): the fields with monogenic != 0, read in chunks (reconnecting if the
+connection to the LMFDB is lost, see lmfdb_fields.py), plus counts. Or they come from a file (--lmfdb FILE) with lines `label|monogenic` or
 `label|monogenic|coeffs` (`\\N` for null; header lines are skipped), e.g. an export of
 nf_fields; then the fields of the file are taken to be all the LMFDB fields of those
 degrees.
@@ -66,6 +66,7 @@ from collections import Counter
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from monogenic import DATA_DIR, NULL, data_path, format_coeffs, label_key, parse_coeffs, read_data
+from lmfdb_fields import count_fields, get_db, search_fields
 from progress import fmt_time
 
 UNKNOWN = (0, None)
@@ -142,11 +143,7 @@ class DBSource:
 
     def __init__(self, with_coeffs, disc=None):
         self.disc = disc or DiscRange()
-        try:
-            from lmfdb import db
-        except ImportError:
-            from lmf import db
-        self.table = db.nf_fields
+        self.db = get_db()
         self.cols = ["label", "monogenic"] + (["coeffs"] if with_coeffs else [])
 
     def degree(self, n, log):
@@ -156,12 +153,12 @@ class DBSource:
         counts = Counter()
         base = dict(degree=n, **self.disc.query())
         log.say("degree %d: counting the LMFDB fields%s" % (n, self.disc))
-        counts["total"] = self.table.count(base)
-        counts[0] = self.table.count(dict(base, monogenic=0))
+        counts["total"] = count_fields(base, db=self.db, say=log.say)
+        counts[0] = count_fields(dict(base, monogenic=0), db=self.db, say=log.say)
         log.say("degree %d: %d LMFDB fields, %d with monogenic = 0; reading the rest"
                 % (n, counts["total"], counts[0]))
         known = {}
-        for r in self.table.search(dict(base, monogenic={"$ne": 0}), self.cols):
+        for r in search_fields(dict(base, monogenic={"$ne": 0}), self.cols, db=self.db, say=log.say):
             known[r["label"]] = (r["monogenic"], [int(c) for c in r["coeffs"]] if "coeffs" in r else None)
             log.tick("degree %d: %d LMFDB fields with monogenic != 0 read so far" % (n, len(known)))
         log.say("degree %d: %d LMFDB fields with monogenic != 0 read" % (n, len(known)))

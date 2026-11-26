@@ -38,7 +38,8 @@ For each field it checks:
     point at a bug in this script.
 
 Fields come from the LMFDB database (`from lmfdb import db`, or lmfdb-lite, as in
-find_generators.py), all columns from nf_fields. Or they come from a file (--input) with
+find_generators.py), all columns from nf_fields, in the order of |disc|, reconnecting and
+going on if the connection to the LMFDB is lost (see lmfdb_fields.py). Or they come from a file (--input) with
 lines
     label|[coeffs]|inessentialp|index|monogenic
 where the last two columns may be left out or be \\N, and inessentialp is a list like [2]
@@ -73,6 +74,7 @@ from collections import Counter
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from compare_lmfdb import DiscRange, Log, parse_degrees, parse_int
+from lmfdb_fields import count_fields, get_db, search_fields
 from monogenic import (NULL, data_path, first_line, label_disc, label_key, pari, pari_call, parse_coeffs,
                        read_data)
 
@@ -203,23 +205,15 @@ def check_field(label, coeffs, inessentialp, index=None, monogenic=None, ours=No
     return out, cid, idx
 
 
-def get_db():
-    try:
-        from lmfdb import db
-    except ImportError:
-        from lmf import db
-    return db
-
-
 def db_fields(n, disc, log, shard, db=None, skip=0):
     """(label, coeffs, inessentialp, index, monogenic) for the LMFDB fields of degree n,
     leaving out the first `skip` fields (of this shard)."""
     db = db or get_db()
     query = dict(degree=n, **disc.query())
-    log.say("degree %d: %d LMFDB fields%s" % (n, db.nf_fields.count(query), disc))
+    log.say("degree %d: %d LMFDB fields%s" % (n, count_fields(query, db=db, say=log.say), disc))
     cols = ["label", "coeffs", "inessentialp", "index", "monogenic"]
     kept = 0
-    for i, r in enumerate(db.nf_fields.search(query, cols)):
+    for i, r in enumerate(search_fields(query, cols, db=db, say=log.say)):
         if i % shard[1] == shard[0]:
             kept += 1
             if kept <= skip:

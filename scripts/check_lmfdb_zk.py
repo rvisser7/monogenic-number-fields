@@ -29,7 +29,8 @@ common index divisors.
 
 Fields come from the LMFDB database (`from lmfdb import db`, or lmfdb-lite, as in
 find_generators.py): coeffs and index from nf_fields, zk from nf_fields_extra (joined on
-the label, --batch labels per query). Or they come from a file (--input) with lines
+the label, --batch labels per query), in the order of |disc|, reconnecting and going on
+if the connection to the LMFDB is lost (see lmfdb_fields.py). Or they come from a file (--input) with lines
     label|[coeffs]|zk|index
 where zk is a JSON list of strings in a, e.g.
     4.0.19982592.7|[8673,0,252,0,1]|["1","a","1/49*a^2 + 18/7","1/49*a^3 + 25/7*a"]|1
@@ -60,6 +61,7 @@ from collections import Counter
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from compare_lmfdb import DiscRange, Log, parse_degrees, parse_int
+from lmfdb_fields import count_fields, get_db, search_fields, with_retries
 from monogenic import NULL, first_line, label_disc, label_key, pari, pari_call, parse_coeffs
 
 KINDS = ["format", "dependent", "not_integral", "disc", "index", "nfdisc", "error"]
@@ -144,33 +146,27 @@ def check_zk(label, coeffs, zk, index=None, nfdisc=False):
     return out
 
 
-def get_db():
-    try:
-        from lmfdb import db
-    except ImportError:
-        from lmf import db
-    return db
-
-
 def db_fields(n, disc, log, shard, batch=10000, db=None, skip=0):
     """(label, coeffs, zk, index) for the LMFDB fields of degree n: coeffs and index from
     nf_fields, zk from nf_fields_extra (same label), fetched `batch` labels at a time.
     The first `skip` fields (of this shard) are left out."""
     db = db or get_db()
     query = dict(degree=n, **disc.query())
-    total = db.nf_fields.count(query)
+    total = count_fields(query, db=db, say=log.say)
     log.say("degree %d: %d LMFDB fields%s" % (n, total, disc))
     rows = []
 
     def flush():
-        zk = {r["label"]: r.get("zk") for r in
-              db.nf_fields_extra.search({"label": {"$in": [r[0] for r in rows]}}, ["label", "zk"])}
+        labels = [r[0] for r in rows]
+        zk = {r["label"]: r.get("zk") for r in with_retries(
+            lambda: list(db.nf_fields_extra.search({"label": {"$in": labels}}, ["label", "zk"])),
+            db, "reading zk", log.say)}
         out = [(label, coeffs, zk.get(label), index) for label, coeffs, index in rows]
         rows.clear()
         return out
 
     kept = 0
-    for i, r in enumerate(db.nf_fields.search(query, ["label", "coeffs", "index"])):
+    for i, r in enumerate(search_fields(query, ["label", "coeffs", "index"], db=db, say=log.say)):
         if i % shard[1] != shard[0]:
             continue
         kept += 1
