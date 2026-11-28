@@ -44,11 +44,11 @@ find_generators.py --degrees 7 --method pari -B 2 --only-new --min-disc 90565412
 find_generators.py --degrees 8 --method pari -B 2 --only-new --min-disc 1700790129
 find_generators.py --degrees 9 --method pari -B 1 --only-new --min-disc 9976741893
 find_generators.py --degrees 10 --method pari -B 0 --batch 250 --only-new --min-disc 4846427731
-find_generators.py --degrees 11 --method pari -B 0 --batch 50 --only-new
+#find_generators.py --degrees 11 --method pari -B 0 --batch 50 --only-new   # degree 11 is done!  (at least for -B 0)
 find_generators.py --degrees 12 --method pari -B 0 --batch 20 --only-new --min-disc 6297971699776
 #find_generators.py --degrees 13 --method pari -B 0 --batch 10 --only-new --min-disc 266655711683820082308476515101175400160364220401  # degree 13 is done! (at least for -B 0)
 #find_generators.py --degrees 14 --method pari -B 0 --batch 1 --only-new --min-disc 19088793183608792523261722624  # degree 14 is done!  (at least for -B 0)
-find_generators.py --degrees 15 --method pari -B 0 --batch 1 --only-new --min-disc 118398715349864183241099543
+#find_generators.py --degrees 15 --method pari -B 0 --batch 1 --only-new --min-disc 118398715349864183241099543  # degree 15 is done! (at least for -B 0)
 find_generators.py --degrees 16 --method pari -B 0 --batch 1 --only-new --min-disc 5068408891191791616
 #find_generators.py --degrees 17 --method pari -B 0 --batch 1 --only-new --min-disc 8972555039016074378226050552414591426720707963201   # degree 17 is done! (at least for -B 0)
 find_generators.py --degrees 18 --method pari -B 0 --batch 1 --only-new --min-disc 1114072389118674940412779
